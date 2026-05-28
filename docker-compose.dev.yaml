@@ -23,8 +23,13 @@ services:
       - kener_uploads:/app/uploads
       - ./infra/kener/seedSiteData.ts:/app/src/lib/server/db/seedSiteData.ts:ro
       - ./infra/kener/seedMonitorData.ts:/app/src/lib/server/db/seedMonitorData.ts:ro
+      - ./infra/kener/monitors.seed.ts:/app/seeds/monitors.ts:ro
       - ./infra/kener/seedPagesData.ts:/app/src/lib/server/db/seedPagesData.ts:ro
+      - ./infra/kener/site_data.seed.ts:/app/seeds/site_data.ts:ro
       - ./infra/kener/pages.seed.ts:/app/seeds/pages.ts:ro
+      - ./Frontend/public/brand/beeba-logo-256.webp:/app/build/client/beeba-logo.webp:ro
+      - ./Frontend/public/favicon-48.png:/app/build/client/beeba-favicon.png:ro
+      - ./Frontend/public/fonts/varela-v17-latin.ttf:/app/build/client/varela-v17-latin.ttf:ro
     depends_on:
       kener_redis:
         condition: service_healthy

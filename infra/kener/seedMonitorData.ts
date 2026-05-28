@@ -56,12 +56,14 @@ const defaultMonitorSettings = {
   uptime_formula_denominator: "up + maintenance + down + degraded",
 };
 
+const monitorIcon = "/beeba-logo.webp";
+
 const seedMonitorData = [
   {
     tag: "beeba-web",
     name: "BeeBa Web",
-    description: "Astro frontend and public catalog shell.",
-    image: "",
+    description: "Public website and asset catalog.",
+    image: monitorIcon,
     cron: "* * * * *",
     default_status: "UP",
     status: "ACTIVE",
@@ -79,8 +81,8 @@ const seedMonitorData = [
   {
     tag: "beeba-api",
     name: "BeeBa API",
-    description: "Go/Fiber backend readiness, including configured PostgreSQL and Redis checks.",
-    image: "",
+    description: "Platform API and account operations.",
+    image: monitorIcon,
     cron: "* * * * *",
     default_status: "UP",
     status: "ACTIVE",
@@ -98,8 +100,8 @@ const seedMonitorData = [
   {
     tag: "beeba-openapi",
     name: "BeeBa OpenAPI",
-    description: "Published OpenAPI document used by the API reference.",
-    image: "",
+    description: "Public API documentation source.",
+    image: monitorIcon,
     cron: "* * * * *",
     default_status: "UP",
     status: "ACTIVE",
@@ -117,8 +119,8 @@ const seedMonitorData = [
   {
     tag: "beeba-search",
     name: "BeeBa Search",
-    description: "Meilisearch service health for catalog search.",
-    image: "",
+    description: "Catalog search availability.",
+    image: monitorIcon,
     cron: "* * * * *",
     default_status: "UP",
     status: "ACTIVE",
@@ -136,8 +138,8 @@ const seedMonitorData = [
   {
     tag: "beeba-storage",
     name: "BeeBa Object Storage",
-    description: "MinIO readiness for .bee packages and media assets.",
-    image: "",
+    description: ".bee packages, previews, avatars, and gallery media storage.",
+    image: monitorIcon,
     cron: "* * * * *",
     default_status: "UP",
     status: "ACTIVE",
