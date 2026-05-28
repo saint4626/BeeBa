@@ -1,0 +1,81 @@
+---
+const openApiUrl = "/openapi.yaml";
+const title = "BeeBa API Reference";
+const description = "Interactive OpenAPI reference for the BeeBa Basis / VR content catalog API.";
+const site = Astro.site ?? new URL("http://localhost:4321");
+const canonical = new URL("/api-reference", site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical.href} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-width: 320px;
+        min-height: 100%;
+        margin: 0;
+        background: #002b36;
+      }
+
+      body {
+        overflow: auto;
+      }
+
+      #scalar-api-reference {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="scalar-api-reference" data-openapi-url={openApiUrl}></main>
+
+    <script>
+      import { createApiReference } from "@scalar/api-reference";
+      import "@scalar/api-reference/style.css";
+
+      const container = document.querySelector("#scalar-api-reference");
+      const openApiUrl = container?.getAttribute("data-openapi-url") ?? "/openapi.yaml";
+
+      createApiReference("#scalar-api-reference", {
+        url: openApiUrl,
+        pageTitle: "BeeBa API Reference",
+        theme: "solarized",
+        darkMode: true,
+        forceDarkModeState: "dark",
+        hideDarkModeToggle: true,
+        layout: "modern",
+        showDeveloperTools: "never",
+        agent: {
+          disabled: true,
+        },
+        defaultHttpClient: {
+          targetKey: "shell",
+          clientKey: "curl",
+        },
+        metaData: {
+          title: "BeeBa API Reference",
+          description: "Interactive OpenAPI reference for the BeeBa API.",
+        },
+      });
+    </script>
+  </body>
+</html>

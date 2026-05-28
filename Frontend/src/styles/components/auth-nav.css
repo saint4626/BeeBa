@@ -1,0 +1,60 @@
+.auth-nav {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  min-width: 0;
+  justify-self: end;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.auth-nav__login {
+  max-width: 188px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-nav .auth-nav__upload,
+.auth-nav .auth-nav__manage {
+  display: none;
+}
+
+.auth-nav__menu {
+  position: relative;
+}
+
+.auth-nav__menu summary {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--palette-black);
+  cursor: pointer;
+  list-style: none;
+}
+
+.auth-nav__avatar {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.auth-nav__menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth-nav__menu .auth-nav__menu-panel {
+  z-index: 120;
+  min-width: 180px;
+}
+
+.auth-nav__menu-item {
+  gap: var(--space-2);
+  font: inherit;
+}

@@ -1,0 +1,23 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+Astro.response.status = 404;
+---
+
+<BaseLayout
+  title="Page not found - BeeBa"
+  description="The requested BeeBa page does not exist."
+  canonicalPath="/404"
+>
+  <main class="not-found-page" aria-labelledby="not-found-title">
+    <div class="not-found-page__content">
+      <span class="empty-state__badge">404</span>
+      <h1 id="not-found-title">Page not found</h1>
+      <p>The route does not exist or is no longer available.</p>
+      <div class="not-found-page__actions">
+        <a class="button button--primary" href="/">Home</a>
+        <a class="button button--secondary" href="/catalog">Catalog</a>
+      </div>
+    </div>
+  </main>
+</BaseLayout>

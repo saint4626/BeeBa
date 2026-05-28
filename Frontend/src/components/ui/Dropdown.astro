@@ -1,0 +1,24 @@
+---
+interface Props {
+  label: string;
+  class?: string;
+  align?: "start" | "end";
+  width?: "auto" | "sm" | "md";
+}
+
+const {
+  label,
+  class: className,
+  align = "start",
+  width = "auto",
+} = Astro.props;
+---
+
+<details class:list={["ui-dropdown", `ui-dropdown--${align}`, `ui-dropdown--${width}`, className]} data-ui-dropdown>
+  <summary aria-label={label}>
+    <slot name="trigger" />
+  </summary>
+  <div class="ui-dropdown__menu">
+    <slot />
+  </div>
+</details>

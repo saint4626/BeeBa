@@ -1,0 +1,40 @@
+.catalog-head {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6) 0 var(--space-8);
+}
+
+.catalog-head__copy {
+  max-width: 780px;
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--color-bee);
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+h1 {
+  max-width: 920px;
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.catalog-head__title {
+  max-width: 920px;
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.lead {
+  max-width: 720px;
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  line-height: 1.7;
+}

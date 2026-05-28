@@ -1,0 +1,17 @@
+DROP TABLE IF EXISTS worker_jobs;
+DROP TABLE IF EXISTS download_events;
+DROP TABLE IF EXISTS api_tokens;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS moderation_actions;
+DROP TABLE IF EXISTS reports;
+DROP TABLE IF EXISTS comments;
+DROP TABLE IF EXISTS likes;
+DROP TABLE IF EXISTS content_tags;
+DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS content_images;
+DROP TABLE IF EXISTS content_files;
+DROP TABLE IF EXISTS content_items;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS users;

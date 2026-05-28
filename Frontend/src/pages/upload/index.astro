@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UploadApp from "../../components/upload/UploadApp.vue";
+import { getServerAPIBaseURL } from "../../lib/api/client";
+import type { PublicUser } from "../../lib/api/types";
+
+const loginHref = `/login?next=${encodeURIComponent("/upload")}`;
+let user: PublicUser | null = null;
+
+try {
+  const meResponse = await fetch(`${getServerAPIBaseURL()}/auth/me`, {
+    headers: {
+      Accept: "application/json",
+      Cookie: Astro.request.headers.get("cookie") ?? "",
+    },
+  });
+
+  if (meResponse.ok) {
+    const mePayload = (await meResponse.json()) as { data: PublicUser };
+    user = mePayload.data;
+  }
+} catch {
+  user = null;
+}
+
+if (!user) {
+  return Astro.redirect(loginHref, 302);
+}
+---
+
+<BaseLayout
+  title="Upload - BeeBa"
+  description="Upload Basis .bee content into BeeBa's quarantine, scan, and moderation pipeline."
+  canonicalPath="/upload"
+>
+  <div class="page-container">
+    <section class="upload-head" aria-labelledby="upload-title">
+      <div>
+        <p class="eyebrow">Upload pipeline</p>
+        <h1 id="upload-title">Upload Basis content.</h1>
+        <p class="lead">
+          Add a `.bee` package, a primary preview image, and the metadata needed for the owner library or public catalog.
+        </p>
+      </div>
+    </section>
+
+    <UploadApp client:load initialUser={user} loginHref={loginHref} />
+  </div>
+</BaseLayout>

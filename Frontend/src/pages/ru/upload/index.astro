@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import UploadApp from "../../../components/upload/UploadApp.vue";
+import { getServerAPIBaseURL } from "../../../lib/api/client";
+import type { PublicUser } from "../../../lib/api/types";
+
+const loginHref = `/ru/login?next=${encodeURIComponent("/ru/upload")}`;
+let user: PublicUser | null = null;
+
+try {
+  const meResponse = await fetch(`${getServerAPIBaseURL()}/auth/me`, {
+    headers: {
+      Accept: "application/json",
+      Cookie: Astro.request.headers.get("cookie") ?? "",
+    },
+  });
+
+  if (meResponse.ok) {
+    const mePayload = (await meResponse.json()) as { data: PublicUser };
+    user = mePayload.data;
+  }
+} catch {
+  user = null;
+}
+
+if (!user) {
+  return Astro.redirect(loginHref, 302);
+}
+---
+
+<BaseLayout
+  title="Загрузка - BeeBa"
+  description="Загрузка Basis .bee контента в карантин, проверку и модерацию BeeBa."
+  canonicalPath="/ru/upload"
+>
+  <div class="page-container">
+    <section class="upload-head" aria-labelledby="upload-title">
+      <div>
+        <p class="eyebrow">Upload pipeline</p>
+        <h1 id="upload-title">Файл попадает в карантин до публикации.</h1>
+        <p class="lead">
+          UI проверяет расширение .bee для удобства, но безопасность, hash, scan status и модерация всегда контролируются backend.
+        </p>
+      </div>
+    </section>
+
+    <UploadApp client:load initialUser={user} loginHref={loginHref} />
+  </div>
+</BaseLayout>

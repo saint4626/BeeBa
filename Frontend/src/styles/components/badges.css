@@ -1,0 +1,86 @@
+.status-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 var(--space-3);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status-badge--published,
+.status-badge--clean {
+  border-color: var(--color-brand-border);
+  background: var(--color-brand-soft);
+  color: var(--palette-mint);
+}
+
+.status-badge--pending_scan,
+.status-badge--pending_moderation,
+.status-badge--running,
+.status-badge--pending {
+  border-color: rgba(255, 168, 0, 0.42);
+  background: rgba(255, 168, 0, 0.11);
+  color: var(--color-warning);
+}
+
+.status-badge--scan,
+.status-badge--uploaded,
+.status-badge--approved,
+.status-badge--no_file {
+  border-color: rgba(255, 215, 0, 0.2);
+}
+
+.status-badge--scan {
+  text-transform: none;
+}
+
+.status-badge--rejected,
+.status-badge--hidden,
+.status-badge--scan_failed,
+.status-badge--failed,
+.status-badge--infected,
+.status-badge--suspicious {
+  border-color: rgba(255, 122, 0, 0.42);
+  background: rgba(255, 122, 0, 0.12);
+  color: var(--color-error);
+}
+
+.status-badge--private,
+.status-badge--nsfw {
+  border-color: var(--color-nsfw-border);
+  background: var(--color-nsfw-soft);
+  color: var(--color-nsfw);
+}
+
+.badge {
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  padding: var(--space-1) var(--space-3);
+  font-size: 12px;
+}
+
+.badge--bee {
+  border-color: var(--color-bee-border);
+  background: var(--color-bee-soft);
+  color: var(--color-bee);
+}
+
+.badge--safe {
+  border-color: var(--color-brand-border);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+
+.badge--nsfw {
+  border-color: var(--color-nsfw-border);
+  background: var(--color-nsfw-soft);
+  color: var(--color-nsfw);
+}

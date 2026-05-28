@@ -1,0 +1,87 @@
+---
+import { Blocks, Box, Download, Globe2, Heart, MessageCircle, UserRound } from "lucide";
+import LucideIcon from "../ui/LucideIcon.astro";
+import type { PublicContentItem } from "../../lib/api/types";
+
+type AssetTone = "world" | "avatar" | "prop" | "prefab";
+
+interface PlaceholderAsset {
+  title: string;
+  category: string;
+  author: string;
+  tone: AssetTone;
+}
+
+interface Props {
+  item?: PublicContentItem;
+  placeholder?: PlaceholderAsset;
+  publicAPIBaseURL: string;
+  priority?: boolean;
+}
+
+const { item, placeholder, publicAPIBaseURL, priority = false } = Astro.props;
+
+const href = item ? `/content/${item.id}` : "/upload";
+const title = item?.title ?? placeholder?.title ?? "Awaiting first upload";
+const category = item?.category.name ?? placeholder?.category ?? "Asset";
+const author = item?.author.display_name || item?.author.username || placeholder?.author || "Community slot";
+const likes = item?.likes_count ?? 0;
+const downloads = item?.downloads_count ?? 0;
+const comments = item?.comments_count ?? 0;
+const imageURL = item?.preview_image_id ? `${publicAPIBaseURL}/media/${item.preview_image_id}` : "";
+const toneByCategory = {
+  worlds: "world",
+  avatars: "avatar",
+  props: "prop",
+  prefabs: "prefab",
+} satisfies Record<PublicContentItem["category"]["slug"], AssetTone>;
+const tone = placeholder?.tone ?? (item ? toneByCategory[item.category.slug] : "world");
+const categoryIconByTone = {
+  world: Globe2,
+  avatar: UserRound,
+  prop: Box,
+  prefab: Blocks,
+};
+const categoryIcon = categoryIconByTone[tone];
+---
+
+<a class={`asset-card asset-card--${tone}`} href={href} aria-label={title} data-motion-card>
+  {
+    imageURL ? (
+      <img class="asset-card__image" src={imageURL} alt="" loading={priority ? "eager" : "lazy"} />
+    ) : (
+      <span class="asset-card__placeholder" aria-hidden="true">
+        <span>{category.slice(0, 2).toUpperCase()}</span>
+      </span>
+    )
+  }
+  <span class="asset-card__shade" aria-hidden="true"></span>
+  <span class="asset-card__top">
+    <span class="asset-card__chip">
+      <LucideIcon node={categoryIcon} size={12} />
+      <span>{category}</span>
+    </span>
+    <span>.bee</span>
+  </span>
+  <span class="asset-card__body">
+    <span class="asset-card__author">
+      <span class="asset-card__avatar" aria-hidden="true">{author.slice(0, 1).toUpperCase()}</span>
+      <span>{author}</span>
+    </span>
+    <span class="asset-card__title">{title}</span>
+    <span class="asset-card__metrics" aria-label="Asset metrics">
+      <span aria-label={`${downloads.toLocaleString()} downloads`}>
+        <LucideIcon node={Download} size={12} />
+        {downloads.toLocaleString()}
+      </span>
+      <span aria-label={`${likes.toLocaleString()} likes`}>
+        <LucideIcon node={Heart} size={12} />
+        {likes.toLocaleString()}
+      </span>
+      <span aria-label={`${comments.toLocaleString()} comments`}>
+        <LucideIcon node={MessageCircle} size={12} />
+        {comments.toLocaleString()}
+      </span>
+    </span>
+  </span>
+</a>

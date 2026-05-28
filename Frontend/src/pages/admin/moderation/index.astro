@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import ModerationApp from "../../../components/admin/ModerationApp.vue";
+import { getServerAPIBaseURL } from "../../../lib/api/client";
+
+const loginHref = `/login?next=${encodeURIComponent("/admin/moderation")}`;
+let hasAdminAccess = false;
+
+try {
+  const statusResponse = await fetch(`${getServerAPIBaseURL()}/admin/status`, {
+    headers: {
+      Accept: "application/json",
+      Cookie: Astro.request.headers.get("cookie") ?? "",
+    },
+  });
+
+  hasAdminAccess = statusResponse.ok;
+  if (statusResponse.status === 401) {
+    return Astro.redirect(loginHref, 302);
+  }
+} catch {
+  hasAdminAccess = false;
+}
+
+if (!hasAdminAccess) {
+  return Astro.redirect("/404", 302);
+}
+---
+
+<BaseLayout
+  title="Moderation - BeeBa Admin"
+  description="BeeBa moderation queue for uploaded content awaiting scan and approval."
+  canonicalPath="/admin/moderation"
+>
+  <div class="page-container">
+    <section class="catalog-head" aria-labelledby="moderation-title">
+      <div class="catalog-head__copy">
+        <p class="eyebrow">Admin / moderation</p>
+        <h1 id="moderation-title">Moderation workspace</h1>
+        <p class="lead">
+          Review uploaded packages, community reports, users, files, worker jobs,
+          taxonomy, and audit events from permission-aware tabs.
+        </p>
+      </div>
+    </section>
+
+    <ModerationApp client:load />
+  </div>
+</BaseLayout>

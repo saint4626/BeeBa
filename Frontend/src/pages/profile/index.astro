@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProfileApp from "../../components/profile/ProfileApp.vue";
+import { getServerAPIBaseURL } from "../../lib/api/client";
+import type { PublicUser } from "../../lib/api/types";
+
+const loginHref = `/login?next=${encodeURIComponent("/profile")}`;
+let user: PublicUser | null = null;
+try {
+  const meResponse = await fetch(`${getServerAPIBaseURL()}/auth/me`, {
+    headers: {
+      Accept: "application/json",
+      Cookie: Astro.request.headers.get("cookie") ?? "",
+    },
+  });
+
+  if (meResponse.ok) {
+    const mePayload = (await meResponse.json()) as { data: PublicUser };
+    user = mePayload.data;
+  }
+} catch {
+  user = null;
+}
+
+if (!user) {
+  return Astro.redirect(loginHref, 302);
+}
+---
+
+<BaseLayout
+  title="Edit Profile - BeeBa"
+  description="Manage your BeeBa account, avatar, private and public uploads, previews, galleries, and content metadata."
+  canonicalPath="/profile"
+>
+  <div class="profile-workspace">
+    <section class="profile-workspace__head" aria-labelledby="profile-title">
+      <div>
+        <p class="eyebrow">Private workspace</p>
+        <h1 id="profile-title">Edit Profile</h1>
+        <p>
+          Manage your account, avatar, uploads, visibility, moderation feedback,
+          previews, and content galleries from one private workspace.
+        </p>
+      </div>
+    </section>
+
+    <ProfileApp client:load loginHref={loginHref} initialUser={user} />
+  </div>
+</BaseLayout>

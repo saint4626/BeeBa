@@ -1,0 +1,13 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import EmailVerificationApp from "../components/auth/EmailVerificationApp.vue";
+---
+
+<BaseLayout
+  title="Verify email - BeeBa"
+  description="Verify a BeeBa account email address."
+>
+  <section class="page-shell page-shell--narrow">
+    <EmailVerificationApp client:load />
+  </section>
+</BaseLayout>

@@ -1,0 +1,580 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"time"
+
+	"beeba.org/internal/config"
+	"beeba.org/internal/domain/jobs"
+	"beeba.org/internal/repository/postgres"
+	searchclient "beeba.org/internal/search/meilisearch"
+	"beeba.org/internal/security/antivirus"
+	"beeba.org/internal/security/basisbee"
+	"beeba.org/internal/security/images"
+	"beeba.org/internal/security/secretbox"
+	miniostorage "beeba.org/internal/storage/minio"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Worker struct {
+	cfg     config.Config
+	log     *slog.Logger
+	db      *pgxpool.Pool
+	jobs    postgres.JobRepository
+	media   postgres.MediaRepository
+	objects objectReader
+	secrets secretbox.Box
+	search  *searchclient.Client
+	av      antivirusScanner
+	id      string
+}
+
+type antivirusScanner interface {
+	Scan(ctx context.Context, reader io.Reader) (antivirus.Result, error)
+}
+
+type objectReader interface {
+	EnsureBucket(ctx context.Context, bucket string) error
+	CopyObject(ctx context.Context, sourceBucket string, sourceKey string, destinationBucket string, destinationKey string) error
+	GetObject(ctx context.Context, bucket string, key string) (io.ReadCloser, error)
+	PutObject(ctx context.Context, bucket string, key string, reader io.Reader, size int64, contentType string) error
+	RemoveObject(ctx context.Context, bucket string, key string) error
+}
+
+func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worker, error) {
+	db, err := postgres.Open(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	secrets, err := secretbox.New(cfg.SecretBoxKey)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	objects, err := miniostorage.New(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	var search *searchclient.Client
+	if cfg.MeilisearchURL != "" {
+		search, err = searchclient.New(cfg.MeilisearchURL, cfg.MeilisearchAPIKey, cfg.MeilisearchContentIndex)
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	var av antivirusScanner
+	if cfg.ClamAVAddr != "" {
+		av, err = antivirus.NewClamdScanner(cfg.ClamAVAddr, cfg.ClamAVTimeout)
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "worker"
+	}
+
+	return &Worker{
+		cfg:     cfg,
+		log:     log,
+		db:      db,
+		jobs:    postgres.NewJobRepository(db),
+		media:   postgres.NewMediaRepository(db),
+		objects: objects,
+		secrets: secrets,
+		search:  search,
+		av:      av,
+		id:      fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()),
+	}, nil
+}
+
+func (w *Worker) Run(ctx context.Context) error {
+	w.log.Info("worker_starting", slog.String("worker_id", w.id))
+	defer w.db.Close()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		if err := w.processOnce(ctx); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			w.log.Error("worker_process_failed", slog.String("error", err.Error()))
+		}
+
+		select {
+		case <-ctx.Done():
+			w.log.Info("worker_stopping")
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (w *Worker) processOnce(ctx context.Context) error {
+	job, err := w.jobs.Claim(ctx, "file_scan_queue", w.id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return w.processAutoPublishQueue(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("claim file scan job: %w", err)
+	}
+
+	w.log.Info("worker_job_claimed", slog.String("job_id", job.ID), slog.String("job_type", job.JobType))
+	if job.JobType != "scan_content_file" {
+		return w.jobs.MarkFailed(ctx, job, "unsupported job type")
+	}
+
+	if err := w.processFileScan(ctx, job); err != nil {
+		if markErr := w.jobs.MarkFailed(ctx, job, err.Error()); markErr != nil {
+			return fmt.Errorf("process job: %w; mark failed: %w", err, markErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (w *Worker) processAutoPublishQueue(ctx context.Context) error {
+	candidate, err := w.jobs.GetAutoPublishCandidate(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return w.processImageQueue(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("load auto-publish candidate: %w", err)
+	}
+
+	if err := w.publishCleanCandidate(ctx, candidate); err != nil {
+		return err
+	}
+	w.log.Info("worker_clean_content_auto_published",
+		slog.String("content_id", candidate.ContentID),
+		slog.String("file_id", candidate.FileID),
+	)
+	return nil
+}
+
+func (w *Worker) processImageQueue(ctx context.Context) error {
+	job, err := w.jobs.Claim(ctx, "image_processing_queue", w.id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return w.processSearchQueue(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("claim image processing job: %w", err)
+	}
+
+	w.log.Info("worker_job_claimed", slog.String("job_id", job.ID), slog.String("job_type", job.JobType))
+	if job.JobType != "process_image" {
+		return w.jobs.MarkFailed(ctx, job, "unsupported job type")
+	}
+
+	if err := w.processImage(ctx, job); err != nil {
+		var payload jobs.ImageProcessPayload
+		if decodeErr := json.Unmarshal(job.Payload, &payload); decodeErr == nil && payload.Kind != "" && payload.ImageID != "" {
+			_ = w.media.FailImageProcessing(ctx, payload.Kind, payload.ImageID)
+		}
+		if markErr := w.jobs.MarkFailed(ctx, job, err.Error()); markErr != nil {
+			return fmt.Errorf("process image: %w; mark failed: %w", err, markErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (w *Worker) processSearchQueue(ctx context.Context) error {
+	job, err := w.jobs.Claim(ctx, "search_index_queue", w.id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.log.Debug("worker_idle", slog.String("queue", "file_scan_queue,image_processing_queue,search_index_queue"))
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("claim search index job: %w", err)
+	}
+
+	w.log.Info("worker_job_claimed", slog.String("job_id", job.ID), slog.String("job_type", job.JobType))
+	if job.JobType != "sync_content_search" {
+		return w.jobs.MarkFailed(ctx, job, "unsupported job type")
+	}
+	if err := w.processSearchIndex(ctx, job); err != nil {
+		if markErr := w.jobs.MarkFailed(ctx, job, err.Error()); markErr != nil {
+			return fmt.Errorf("process search index: %w; mark failed: %w", err, markErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (w *Worker) processFileScan(ctx context.Context, job jobs.Job) error {
+	var payload jobs.FileScanPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode file scan payload: %w", err)
+	}
+	if payload.FileID == "" || payload.ContentID == "" || payload.Bucket == "" || payload.StorageKey == "" {
+		return fmt.Errorf("file scan payload is incomplete")
+	}
+
+	file, err := w.jobs.GetContentFileForScan(ctx, payload.FileID)
+	if err != nil {
+		return fmt.Errorf("load content file for scan: %w", err)
+	}
+	if file.ContentID != payload.ContentID || file.Bucket != payload.Bucket || file.StorageKey != payload.StorageKey {
+		return w.jobs.CompleteFileScan(ctx, job.ID, payload.FileID, payload.ContentID, "suspicious", "scan_failed", map[string]any{
+			"scanner": "metadata_integrity",
+			"result":  "suspicious",
+			"reason":  "payload_metadata_mismatch",
+		})
+	}
+
+	object, err := w.objects.GetObject(ctx, file.Bucket, file.StorageKey)
+	if err != nil {
+		return fmt.Errorf("open quarantine object: %w", err)
+	}
+
+	hasher := sha256.New()
+	size, err := io.Copy(hasher, object)
+	if err != nil {
+		object.Close()
+		return fmt.Errorf("read quarantine object: %w", err)
+	}
+	object.Close()
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	if size != file.FileSize || hash != file.FileHashSHA256 {
+		return w.jobs.CompleteFileScan(ctx, job.ID, file.FileID, file.ContentID, "suspicious", "scan_failed", map[string]any{
+			"scanner":       "metadata_integrity",
+			"result":        "suspicious",
+			"reason":        "object_hash_or_size_mismatch",
+			"expected_size": file.FileSize,
+			"actual_size":   size,
+			"expected_hash": file.FileHashSHA256,
+			"actual_hash":   hash,
+		})
+	}
+
+	avResult, err := w.scanQuarantineObject(ctx, file)
+	if errors.Is(err, antivirus.ErrInfected) {
+		return w.jobs.CompleteFileScan(ctx, job.ID, file.FileID, file.ContentID, "infected", "scan_failed", map[string]any{
+			"scanner":   "clamav",
+			"result":    "infected",
+			"signature": avResult.Signature,
+			"reason":    "antivirus_detected_infected_content",
+			"size":      size,
+			"sha256":    hash,
+		})
+	}
+	if err != nil {
+		return fmt.Errorf("antivirus scan failed: %w", err)
+	}
+
+	object, err = w.objects.GetObject(ctx, file.Bucket, file.StorageKey)
+	if err != nil {
+		return fmt.Errorf("reopen quarantine object for basis validation: %w", err)
+	}
+	defer object.Close()
+
+	unlockPassword, err := w.secrets.DecryptString(file.UnlockPasswordCiphertext)
+	if err != nil {
+		return fmt.Errorf("decrypt unlock password: %w", err)
+	}
+
+	beeResult, connector, err := basisbee.ValidateRemoteSDKBEEWithPassword(object, unlockPassword, w.cfg.MaxUploadBytes)
+	if err != nil {
+		return w.jobs.CompleteFileScan(ctx, job.ID, file.FileID, file.ContentID, "suspicious", "scan_failed", map[string]any{
+			"scanner": "basis_bee_format",
+			"result":  "suspicious",
+			"reason":  err.Error(),
+		})
+	}
+
+	if avResult.Result == "skipped" {
+		if err := w.jobs.CompleteFileScan(ctx, job.ID, file.FileID, file.ContentID, "failed", "scan_failed", map[string]any{
+			"scanner":           "clamav+basis_bee_format",
+			"result":            "failed",
+			"antivirus":         avResult,
+			"basis_result":      "valid",
+			"reason":            "antivirus_scan_skipped",
+			"size":              size,
+			"sha256":            hash,
+			"connector_bytes":   beeResult.ConnectorBytes,
+			"section_bytes":     beeResult.SectionBytes,
+			"remote_sdk_format": beeResult.RemoteSDKFormat,
+			"unique_version":    beeResult.UniqueVersion,
+			"asset_name":        beeResult.AssetName,
+			"asset_mode":        beeResult.AssetMode,
+			"platform_count":    beeResult.PlatformCount,
+		}); err != nil {
+			return fmt.Errorf("complete skipped file scan: %w", err)
+		}
+		w.log.Info("worker_file_scan_completed",
+			slog.String("job_id", job.ID),
+			slog.String("file_id", file.FileID),
+			slog.String("scan_status", "failed"),
+		)
+		return nil
+	}
+
+	scanResult := map[string]any{
+		"scanner":           "clamav+basis_bee_format",
+		"result":            "clean",
+		"antivirus":         avResult,
+		"basis_result":      "valid",
+		"size":              size,
+		"sha256":            hash,
+		"connector_bytes":   beeResult.ConnectorBytes,
+		"section_bytes":     beeResult.SectionBytes,
+		"remote_sdk_format": beeResult.RemoteSDKFormat,
+		"unique_version":    beeResult.UniqueVersion,
+		"asset_name":        beeResult.AssetName,
+		"asset_mode":        beeResult.AssetMode,
+		"platform_count":    beeResult.PlatformCount,
+		"tags":              connector.BasisBundleDescription.Tags,
+		"metadata": map[string]any{
+			"triangles_count":      connector.MetaData.TrianglesCount,
+			"material_count":       connector.MetaData.MaterialCount,
+			"bones_count":          connector.MetaData.BonesCount,
+			"texture_memory_bytes": connector.MetaData.TextureMemoryBytes,
+			"graphics_pipeline":    connector.MetaData.GraphicsPipeline,
+		},
+	}
+	if err := w.autoPublishCleanFile(ctx, job.ID, file, scanResult); err != nil {
+		return err
+	}
+
+	w.log.Info("worker_file_scan_completed",
+		slog.String("job_id", job.ID),
+		slog.String("file_id", file.FileID),
+		slog.String("scan_status", "clean"),
+		slog.String("content_status", "published"),
+	)
+	return nil
+}
+
+func (w *Worker) autoPublishCleanFile(ctx context.Context, jobID string, file jobs.ContentFileForScan, scanResult map[string]any) error {
+	newBucket := file.Bucket
+	newStorageKey := file.StorageKey
+	promoted := false
+
+	if file.Bucket == w.cfg.QuarantineBucket {
+		if err := w.objects.EnsureBucket(ctx, w.cfg.PrivateBucket); err != nil {
+			return fmt.Errorf("prepare approved storage: %w", err)
+		}
+		newBucket = w.cfg.PrivateBucket
+		newStorageKey = fmt.Sprintf("content/%s/%s.bee", file.ContentID, file.FileID)
+		if err := w.objects.CopyObject(ctx, file.Bucket, file.StorageKey, newBucket, newStorageKey); err != nil {
+			return fmt.Errorf("promote clean content file: %w", err)
+		}
+		promoted = true
+	}
+
+	if err := w.jobs.CompleteFileScanAndPublish(ctx, jobID, file.FileID, file.ContentID, "clean", scanResult, newBucket, newStorageKey); err != nil {
+		if promoted {
+			_ = w.objects.RemoveObject(ctx, newBucket, newStorageKey)
+		}
+		return fmt.Errorf("auto-publish clean file scan: %w", err)
+	}
+
+	if promoted {
+		_ = w.objects.RemoveObject(ctx, file.Bucket, file.StorageKey)
+	}
+	return nil
+}
+
+func (w *Worker) publishCleanCandidate(ctx context.Context, file jobs.ContentFileForScan) error {
+	newBucket := file.Bucket
+	newStorageKey := file.StorageKey
+	promoted := false
+
+	if file.Bucket == w.cfg.QuarantineBucket {
+		if err := w.objects.EnsureBucket(ctx, w.cfg.PrivateBucket); err != nil {
+			return fmt.Errorf("prepare approved storage: %w", err)
+		}
+		newBucket = w.cfg.PrivateBucket
+		newStorageKey = fmt.Sprintf("content/%s/%s.bee", file.ContentID, file.FileID)
+		if err := w.objects.CopyObject(ctx, file.Bucket, file.StorageKey, newBucket, newStorageKey); err != nil {
+			return fmt.Errorf("promote clean content file: %w", err)
+		}
+		promoted = true
+	}
+
+	if err := w.jobs.PublishCleanContent(ctx, file.FileID, file.ContentID, newBucket, newStorageKey); err != nil {
+		if promoted {
+			_ = w.objects.RemoveObject(ctx, newBucket, newStorageKey)
+		}
+		return fmt.Errorf("publish clean content candidate: %w", err)
+	}
+
+	if promoted {
+		_ = w.objects.RemoveObject(ctx, file.Bucket, file.StorageKey)
+	}
+	return nil
+}
+
+func (w *Worker) scanQuarantineObject(ctx context.Context, file jobs.ContentFileForScan) (antivirus.Result, error) {
+	if w.av == nil {
+		if w.cfg.ClamAVRequired {
+			return antivirus.Result{}, fmt.Errorf("clamav scanner is required but not configured")
+		}
+		return antivirus.Result{
+			Scanner: "clamav",
+			Result:  "skipped",
+			Reason:  "clamav_not_configured",
+		}, nil
+	}
+	object, err := w.objects.GetObject(ctx, file.Bucket, file.StorageKey)
+	if err != nil {
+		return antivirus.Result{}, fmt.Errorf("open quarantine object for antivirus: %w", err)
+	}
+	defer object.Close()
+	return w.av.Scan(ctx, object)
+}
+
+func (w *Worker) processImage(ctx context.Context, job jobs.Job) error {
+	var payload jobs.ImageProcessPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode image processing payload: %w", err)
+	}
+	if payload.Kind == "" || payload.ImageID == "" {
+		return fmt.Errorf("image processing payload is incomplete")
+	}
+
+	imageMeta, err := w.media.GetImageForProcessing(ctx, payload.Kind, payload.ImageID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+				return fmt.Errorf("mark deleted image job succeeded: %w", markErr)
+			}
+			w.log.Info("worker_image_skipped",
+				slog.String("job_id", job.ID),
+				slog.String("image_id", payload.ImageID),
+				slog.String("kind", payload.Kind),
+			)
+			return nil
+		}
+		return fmt.Errorf("load image for processing: %w", err)
+	}
+
+	object, err := w.objects.GetObject(ctx, imageMeta.Bucket, imageMeta.StorageKey)
+	if err != nil {
+		return fmt.Errorf("open pending image object: %w", err)
+	}
+	processed, mimeType, width, height, extension, err := images.Reencode(object, imageProcessingProfile(imageMeta.Kind))
+	closeErr := object.Close()
+	if err != nil {
+		return fmt.Errorf("process image: %w", err)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close pending image object: %w", closeErr)
+	}
+
+	sum := sha256.Sum256(processed)
+	hash := hex.EncodeToString(sum[:])
+	processedKey := processedImageKey(imageMeta.Kind, imageMeta.UserID, imageMeta.ContentID, imageMeta.ID, extension)
+	if err := w.objects.PutObject(ctx, imageMeta.Bucket, processedKey, bytes.NewReader(processed), int64(len(processed)), mimeType); err != nil {
+		return fmt.Errorf("store processed image: %w", err)
+	}
+
+	if err := w.media.CompleteImageProcessing(ctx, imageMeta.Kind, imageMeta.ID, imageMeta.Bucket, processedKey, width, height, int64(len(processed)), hash, mimeType); err != nil {
+		_ = w.objects.RemoveObject(ctx, imageMeta.Bucket, processedKey)
+		return fmt.Errorf("complete image processing: %w", err)
+	}
+	if imageMeta.Kind == "content_image" && imageMeta.ContentID != "" {
+		if err := w.jobs.EnqueueSearchIndex(ctx, imageMeta.ContentID, "upsert_content"); err != nil {
+			w.log.Error("search_refresh_enqueue_failed",
+				slog.String("content_id", imageMeta.ContentID),
+				slog.String("image_id", imageMeta.ID),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+
+	if imageMeta.StorageKey != processedKey {
+		_ = w.objects.RemoveObject(ctx, imageMeta.Bucket, imageMeta.StorageKey)
+	}
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark image job succeeded: %w", err)
+	}
+
+	w.log.Info("worker_image_processed",
+		slog.String("job_id", job.ID),
+		slog.String("image_id", imageMeta.ID),
+		slog.String("kind", imageMeta.Kind),
+	)
+	return nil
+}
+
+func (w *Worker) processSearchIndex(ctx context.Context, job jobs.Job) error {
+	if w.search == nil {
+		return fmt.Errorf("meilisearch client is not configured")
+	}
+	var payload jobs.SearchIndexPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode search index payload: %w", err)
+	}
+	if payload.ContentID == "" {
+		return fmt.Errorf("search index payload is incomplete")
+	}
+
+	switch payload.Action {
+	case "", "upsert_content":
+		doc, err := w.jobs.GetContentSearchDocument(ctx, payload.ContentID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := w.search.DeleteContent(ctx, payload.ContentID); err != nil {
+				return fmt.Errorf("delete stale content search document: %w", err)
+			}
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("load content search document: %w", err)
+		}
+		if err := w.search.UpsertContent(ctx, doc); err != nil {
+			return fmt.Errorf("upsert content search document: %w", err)
+		}
+	case "delete_content":
+		if err := w.search.DeleteContent(ctx, payload.ContentID); err != nil {
+			return fmt.Errorf("delete content search document: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported search index action %q", payload.Action)
+	}
+
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark search job succeeded: %w", err)
+	}
+	w.log.Info("worker_search_index_synced",
+		slog.String("job_id", job.ID),
+		slog.String("content_id", payload.ContentID),
+		slog.String("action", payload.Action),
+	)
+	return nil
+}
+
+func processedImageKey(kind string, userID string, contentID string, imageID string, extension string) string {
+	switch kind {
+	case "user_avatar":
+		return fmt.Sprintf("users/%s/avatar/%s%s", userID, imageID, extension)
+	case "content_image":
+		return fmt.Sprintf("content/%s/images/%s%s", contentID, imageID, extension)
+	default:
+		return fmt.Sprintf("images/%s%s", imageID, extension)
+	}
+}
+
+func imageProcessingProfile(kind string) images.ProcessingProfile {
+	if kind == "user_avatar" {
+		return images.AvatarProfile()
+	}
+	return images.ContentProfile()
+}

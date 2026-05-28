@@ -1,0 +1,157 @@
+---
+import CatalogView from "../../components/catalog/CatalogView.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import LucideIcon from "../../components/ui/LucideIcon.astro";
+import { Boxes, Calendar, Download, Heart, PackageCheck } from "lucide";
+import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { getPublicProfile, listCategories, listPublicContent, listTags } from "../../lib/api/content";
+import { PAGE_LIMITS } from "../../lib/config/runtime";
+import type { CatalogTag, Category, CursorPagination, PublicContentItem, PublicProfile } from "../../lib/api/types";
+
+export const prerender = false;
+
+const { username } = Astro.params;
+const publicAPIBaseURL = getPublicAPIBaseURL();
+
+if (!username) {
+  return Astro.redirect("/catalog", 302);
+}
+
+let profile: PublicProfile | null = null;
+let categories: Category[] = [
+  { slug: "worlds", name: "Worlds" },
+  { slug: "avatars", name: "Avatars" },
+  { slug: "props", name: "Props" },
+  { slug: "prefabs", name: "Prefabs" },
+];
+let tags: CatalogTag[] = [];
+let items: PublicContentItem[] = [];
+let pagination: CursorPagination | undefined;
+let error: string | undefined;
+
+const searchParams = Astro.url.searchParams;
+const sort = searchParams.get("sort") ?? "newest";
+const cursor = searchParams.get("cursor")?.trim() ?? "";
+const includeNSFW = searchParams.get("include_nsfw") === "true";
+const requestedCategory = searchParams.get("category")?.trim() ?? "";
+const activeCategory = ["worlds", "avatars", "props", "prefabs"].includes(requestedCategory)
+  ? requestedCategory as Category["slug"]
+  : undefined;
+
+try {
+  profile = await getPublicProfile(username);
+  const [categoryData, tagData, contentData] = await Promise.all([
+    listCategories(),
+    listTags(),
+    listPublicContent({
+      author: profile.username,
+      category: activeCategory,
+      sort: sort === "likes" || sort === "downloads" ? sort : "newest",
+      include_nsfw: includeNSFW,
+      cursor,
+      limit: PAGE_LIMITS.profileAssets,
+    }),
+  ]);
+  categories = categoryData;
+  tags = tagData;
+  items = contentData.data;
+  pagination = contentData.pagination;
+} catch (caught) {
+  const message = caught instanceof Error ? caught.message : "Failed to load user profile.";
+  if (message.toLowerCase().includes("not found")) {
+    return new Response(null, { status: 404 });
+  }
+  error = message;
+}
+
+const displayName = profile?.display_name || profile?.username || username;
+const hasPublicDisplayName = Boolean(profile?.display_name?.trim());
+const showPublicHandle = Boolean(
+  hasPublicDisplayName &&
+  profile?.username &&
+  profile.display_name?.trim().toLowerCase() !== profile.username.toLowerCase(),
+);
+const pageTitle = `${displayName} - BeeBa Profile`;
+const description = profile
+  ? `${displayName} has ${profile.published_count} published Basis / VR assets on BeeBa.`
+  : "BeeBa public user profile.";
+const avatarURL = profile?.avatar_image_id ? `${publicAPIBaseURL}/media/${profile.avatar_image_id}` : "";
+const joinedAt = profile ? new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(new Date(profile.created_at)) : "";
+const initials = (displayName || username).slice(0, 2).toUpperCase();
+---
+
+<BaseLayout title={pageTitle} description={description} canonicalPath={`/users/${username}`}>
+  {error ? (
+    <div class="page-container">
+      <div class="empty-state">
+        <span class="empty-state__badge">API unavailable</span>
+        <div>
+          <h1>Profile could not be loaded.</h1>
+          <p>{error}</p>
+        </div>
+      </div>
+    </div>
+  ) : profile && (
+    <>
+      <div class="profile-public-shell">
+        <section class="public-profile-hero" aria-labelledby="profile-title">
+          <div class="public-profile-hero__identity">
+            <div class="public-profile-hero__avatar" aria-hidden="true">
+              {avatarURL ? <img src={avatarURL} alt="" /> : <span>{initials}</span>}
+            </div>
+            <div class="public-profile-hero__copy">
+              <p class="eyebrow">Creator profile</p>
+              <h1 id="profile-title">{displayName}</h1>
+              {showPublicHandle && <p>@{profile.username}</p>}
+            </div>
+          </div>
+
+          <dl class="public-profile-stats" aria-label={`${displayName} profile stats`}>
+            <div>
+              <dt><LucideIcon node={PackageCheck} size={15} /> Published</dt>
+              <dd>{profile.published_count.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt><LucideIcon node={Heart} size={15} /> Likes</dt>
+              <dd>{profile.likes_count.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt><LucideIcon node={Download} size={15} /> Downloads</dt>
+              <dd>{profile.downloads_count.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt><LucideIcon node={Calendar} size={15} /> Joined</dt>
+              <dd>{joinedAt}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="public-profile-assets" aria-labelledby="profile-assets-title">
+          <div class="public-profile-assets__head">
+            <div>
+              <p class="eyebrow"><LucideIcon node={Boxes} size={14} /> Public library</p>
+              <h2 id="profile-assets-title">Published assets</h2>
+            </div>
+            <p>Only approved public content appears here. Private uploads and unmoderated assets stay hidden.</p>
+          </div>
+
+          <CatalogView
+            items={items}
+            pagination={pagination}
+            categories={categories}
+            tags={tags}
+            query=""
+            activeTags={[]}
+            sort={sort === "likes" || sort === "downloads" ? sort : "newest"}
+            includeNSFW={includeNSFW}
+            activeCategory={activeCategory}
+            error={error}
+            baseCatalogPath={`/users/${profile.username}`}
+            categoryParamMode="query"
+            author={profile.username}
+          />
+        </section>
+      </div>
+    </>
+  )}
+</BaseLayout>

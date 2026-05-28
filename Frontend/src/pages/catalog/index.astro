@@ -1,0 +1,82 @@
+---
+import CatalogView from "../../components/catalog/CatalogView.astro";
+import CatalogHeaderActions from "../../components/catalog/CatalogHeaderActions.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { listCategories, listPublicContent, listTags } from "../../lib/api/content";
+import { PAGE_LIMITS } from "../../lib/config/runtime";
+import type { PublicContentItem, CursorPagination } from "../../lib/api/types";
+
+const searchParams = Astro.url.searchParams;
+const query = searchParams.get("q")?.trim() ?? "";
+const activeTags = parseTags(searchParams.get("tags"));
+const sort = normalizeSort(searchParams.get("sort"));
+const includeNSFW = searchParams.get("include_nsfw") === "true";
+const cursor = searchParams.get("cursor")?.trim() ?? "";
+
+let categories = [
+  { slug: "worlds", name: "Worlds" },
+  { slug: "avatars", name: "Avatars" },
+  { slug: "props", name: "Props" },
+  { slug: "prefabs", name: "Prefabs" },
+];
+let tags = [];
+let items: PublicContentItem[] = [];
+let pagination: CursorPagination | undefined;
+let error: string | undefined;
+
+try {
+  const [categoryData, tagData, contentData] = await Promise.all([
+    listCategories(),
+    listTags(),
+    listPublicContent({
+      q: query,
+      tags: activeTags,
+      sort: sort === "likes" || sort === "downloads" ? sort : "newest",
+      include_nsfw: includeNSFW,
+      cursor,
+      limit: PAGE_LIMITS.catalog,
+    }),
+  ]);
+  categories = categoryData;
+  tags = tagData;
+  items = contentData.data;
+  pagination = contentData.pagination;
+} catch (caught) {
+  error = caught instanceof Error ? caught.message : "Failed to load catalog data.";
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  return Array.from(new Set(raw.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
+}
+
+function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
+  return raw === "likes" || raw === "downloads" ? raw : "newest";
+}
+---
+
+<BaseLayout
+  title="Catalog - BeeBa"
+  description="Browse Basis / VR worlds, avatars, props, and prefabs once they pass scan and moderation."
+  canonicalPath="/catalog"
+>
+  <CatalogHeaderActions
+    slot="header-actions"
+    tags={tags}
+    query={query}
+    activeTags={activeTags}
+    sort={sort}
+    includeNSFW={includeNSFW}
+  />
+  <CatalogView
+    items={items}
+    pagination={pagination}
+    categories={categories}
+    tags={tags}
+    query={query}
+    activeTags={activeTags}
+    sort={sort}
+    includeNSFW={includeNSFW}
+    error={error}
+  />
+</BaseLayout>

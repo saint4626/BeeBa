@@ -1,0 +1,57 @@
+---
+import CatalogFeed from "./CatalogFeed.vue";
+import { getPublicAPIBaseURL } from "../../lib/api/client";
+import type { CatalogTag, Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
+
+interface Props {
+  items: PublicContentItem[];
+  pagination?: CursorPagination;
+  categories: Category[];
+  tags: CatalogTag[];
+  query: string;
+  activeTags: string[];
+  sort: "newest" | "likes" | "downloads";
+  includeNSFW: boolean;
+  activeCategory?: Category["slug"];
+  error?: string;
+  baseCatalogPath?: string;
+  categoryParamMode?: "path" | "query";
+  author?: string;
+}
+
+const {
+  items,
+  pagination,
+  categories,
+  tags,
+  query,
+  activeTags,
+  sort,
+  includeNSFW,
+  activeCategory,
+  error,
+  baseCatalogPath = "/catalog",
+  categoryParamMode = "path",
+  author = "",
+} = Astro.props;
+
+const publicAPIBaseURL = getPublicAPIBaseURL();
+---
+
+<CatalogFeed
+  client:load
+  initialItems={items}
+  initialPagination={pagination}
+  categories={categories}
+  tags={tags}
+  query={query}
+  activeTags={activeTags}
+  sort={sort}
+  includeNSFW={includeNSFW}
+  activeCategory={activeCategory}
+  baseCatalogPath={baseCatalogPath}
+  categoryParamMode={categoryParamMode}
+  author={author}
+  publicAPIBaseURL={publicAPIBaseURL}
+  error={error}
+/>

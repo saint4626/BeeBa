@@ -1,0 +1,3823 @@
+openapi: 3.1.0
+info:
+  title: BeeBa API
+  version: 0.1.0
+  description: Versioned API for the BeeBa Basis / VR content catalog.
+servers:
+  - url: http://localhost:8080
+    description: Local backend
+  - url: https://beeba.org
+    description: Production domain
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: getHealthz
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /readyz:
+    get:
+      summary: Readiness probe
+      operationId: getReadyz
+      responses:
+        "200":
+          description: Process is ready to receive traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /openapi.yaml:
+    get:
+      summary: OpenAPI YAML document
+      operationId: getOpenAPIYaml
+      responses:
+        "200":
+          description: Current OpenAPI document for the BeeBa API.
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: OpenAPI document is not available.
+  /api/v1/status:
+    get:
+      summary: API status and public runtime limits
+      operationId: getAPIStatus
+      responses:
+        "200":
+          description: API status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIStatusResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/categories:
+    get:
+      summary: List active public content categories
+      operationId: listCategories
+      responses:
+        "200":
+          description: Active categories ordered for catalog navigation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Category"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/tags:
+    get:
+      summary: List public tags with published content counts
+      operationId: listTags
+      responses:
+        "200":
+          description: Public tags ordered by published content count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content:
+    get:
+      summary: List published public content
+      operationId: listContent
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum:
+              - worlds
+              - avatars
+              - props
+              - prefabs
+        - name: author
+          in: query
+          description: Filter by public author username.
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 32
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: tags
+          in: query
+          description: Comma-separated tag slugs. Results match any provided tag.
+          schema:
+            type: string
+            maxLength: 500
+        - name: include_nsfw
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - newest
+              - likes
+              - downloads
+            default: newest
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Published content page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PublicContentItem"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/users/{username}:
+    get:
+      summary: Get a public user profile
+      operationId: getPublicProfile
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 32
+      responses:
+        "200":
+          description: Public user profile with published-content counters.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicProfile"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/search:
+    get:
+      summary: Search published public content with Meilisearch
+      operationId: searchContent
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum:
+              - worlds
+              - avatars
+              - props
+              - prefabs
+        - name: tags
+          in: query
+          description: Comma-separated tag slugs. Results match any provided tag.
+          schema:
+            type: string
+            maxLength: 500
+        - name: include_nsfw
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - newest
+              - likes
+              - downloads
+            default: newest
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search results hydrated from PostgreSQL after Meilisearch ranking.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PublicContentItem"
+                  pagination:
+                    $ref: "#/components/schemas/SearchPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/uploads:
+    post:
+      summary: Upload a .bee package into quarantine
+      operationId: uploadContentPackage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ContentUploadRequest"
+      responses:
+        "201":
+          description: Upload metadata persisted and scan job queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContentUploadCreated"
+        "409":
+          description: The authenticated user already uploaded a non-deleted `.bee` file with the same SHA-256 hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/{content_id}/comments:
+    get:
+      summary: List visible comments for published public content
+      operationId: listContentComments
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Visible comments ordered by newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PublicComment"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create and publish a visible comment
+      operationId: createContentComment
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+      responses:
+        "201":
+          description: Comment created with visible status. Moderators can hide it later if needed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicComment"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/{content_id}/like:
+    post:
+      summary: Like published public content
+      operationId: likeContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Like state and current count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LikeResult"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove the authenticated user's like
+      operationId: unlikeContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Like state and current count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LikeResult"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/{content_id}/report:
+    post:
+      summary: Report published public content
+      operationId: reportContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportContentRequest"
+      responses:
+        "201":
+          description: Open content report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContentReport"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/{content_id}:
+    get:
+      summary: Get published public content details
+      operationId: getPublicContent
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Published public content with processed gallery images.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicContentDetail"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/content/{content_id}/download:
+    get:
+      summary: Download a published public .bee package through the backend
+      operationId: downloadPublicContentPackage
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Binary .bee package stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/media/{image_id}:
+    get:
+      summary: Serve a processed public image
+      operationId: getPublicMediaImage
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Processed WebP image stream.
+          content:
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/profile:
+    patch:
+      summary: Update the authenticated user's public profile fields
+      operationId: updateCurrentUserProfile
+      description: Updates public identity fields that do not require email verification or URL migration.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdateRequest"
+      responses:
+        "200":
+          description: Updated authenticated user profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/password:
+    patch:
+      summary: Change the authenticated user's password
+      operationId: changeCurrentUserPassword
+      description: Verifies the current password, stores a new Argon2id hash, and revokes other active sessions for the same user.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "204":
+          description: Password changed. Other active sessions were revoked.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content:
+    get:
+      summary: List content owned by the authenticated user
+      operationId: listOwnedContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - draft
+              - uploaded
+              - pending_scan
+              - scan_failed
+              - pending_moderation
+              - approved
+              - published
+              - rejected
+              - hidden
+              - deleted
+        - name: visibility
+          in: query
+          schema:
+            type: string
+            enum:
+              - public
+              - private
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owned content page, including private items and upload/scan state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OwnerContentItem"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content/{content_id}:
+    patch:
+      summary: Update metadata for content owned by the authenticated user
+      operationId: updateOwnedContent
+      description: Published, approved, rejected, and hidden items with a clean scanned file are returned to pending_moderation after owner metadata changes.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerContentUpdateRequest"
+      responses:
+        "200":
+          description: Updated owned content item.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerContentItem"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Soft-delete content owned by the authenticated user
+      operationId: deleteOwnedContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Owned content was soft-deleted and removed from public search if needed.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/avatar:
+    post:
+      summary: Upload the authenticated user's avatar image
+      description: Accepts one JPEG or PNG image up to the configured image upload limit. A successful upload replaces the current avatar and queues the new image for processing.
+      operationId: uploadCurrentUserAvatar
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageUploadRequest"
+      responses:
+        "201":
+          description: Avatar image stored and image processing job queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UploadedImage"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/media/{image_id}:
+    get:
+      summary: Serve a processed image owned by the authenticated user
+      operationId: getOwnedMediaImage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Processed WebP image bytes for the owner, including private or unmoderated content images.
+          content:
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content/{content_id}/images:
+    get:
+      summary: List preview and gallery images for owned content
+      operationId: listOwnedContentImages
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owned content images.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UploadedImage"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Upload a preview or gallery image for owned content
+      operationId: uploadOwnedContentImage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/ImageUploadRequest"
+                - type: object
+                  properties:
+                    is_primary:
+                      type: boolean
+                      description: When true, this image becomes the content card/detail preview.
+                    sort_order:
+                      type: integer
+                      minimum: 0
+                      maximum: 1000
+      responses:
+        "201":
+          description: Content image stored and image processing job queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UploadedImage"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content/{content_id}/images/{image_id}:
+    patch:
+      summary: Update metadata for an owned content image
+      operationId: updateOwnedContentImage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentImageUpdateRequest"
+      responses:
+        "200":
+          description: Updated owned content image.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UploadedImage"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove an owned content image from public and owner galleries
+      operationId: deleteOwnedContentImage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Image removed.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content/{content_id}/download:
+    get:
+      summary: Download an owned published .bee package through the backend
+      operationId: downloadOwnerContentPackage
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Binary .bee package stream for the owner.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/register:
+    post:
+      summary: Register a user account
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered. Email verification is still required.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - email_verification_required
+                    properties:
+                      email_verification_required:
+                        type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/login:
+    post:
+      summary: Login with email and password
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded, returned revocable opaque tokens, and set HttpOnly browser session cookies plus a non-HttpOnly CSRF cookie for browser writes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TokenPair"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/email/verify:
+    post:
+      summary: Verify account email
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailVerifyRequest"
+      responses:
+        "200":
+          description: Email verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - already_verified
+                    properties:
+                      already_verified:
+                        type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/email/resend:
+    post:
+      summary: Request another email verification message
+      operationId: resendEmailVerification
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Verification email job queued unless the email is already verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - already_verified
+                      - verification_sent
+                    properties:
+                      already_verified:
+                        type: boolean
+                      verification_sent:
+                        type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/me:
+    get:
+      summary: Get current user for a bearer access token or browser session cookie
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate refresh token and issue new tokens
+      operationId: refreshSession
+      requestBody:
+        required: false
+        description: Optional when the `beeba_refresh_token` HttpOnly cookie is present.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New token pair. Browser clients also receive rotated HttpOnly session cookies.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TokenPair"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke a refresh token session
+      operationId: logoutSession
+      requestBody:
+        required: false
+        description: Optional when the `beeba_refresh_token` HttpOnly cookie is present.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "204":
+          description: Session revoked or already absent.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/status:
+    get:
+      summary: Check authenticated admin API access
+      operationId: getAdminStatus
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Admin API status for an authorized moderator, admin, or owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminStatus"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/moderation/content:
+    get:
+      summary: List content that requires moderator review
+      operationId: listModerationContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending_scan
+              - scan_failed
+              - pending_moderation
+              - approved
+              - published
+              - rejected
+              - hidden
+          description: Optional content status filter. Defaults to pending_moderation and scan_failed.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Moderation queue items ordered by most recently updated content.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModerationQueueItem"
+                  pagination:
+                    type: object
+                    required:
+                      - limit
+                    properties:
+                      limit:
+                        type: integer
+                        minimum: 1
+                        maximum: 100
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/moderation/comments:
+    get:
+      summary: List comments for moderator review
+      operationId: listModerationComments
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - visible
+              - hidden
+              - deleted
+              - pending_moderation
+          description: Optional comment status filter. Defaults to visible for post-publication review.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Comment moderation queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModerationCommentItem"
+                  pagination:
+                    $ref: "#/components/schemas/LimitPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/moderation/reports:
+    get:
+      summary: List open or filtered reports for moderator review
+      operationId: listModerationReports
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - open
+              - in_review
+              - resolved
+              - rejected
+          description: Optional report status filter. Defaults to open and in_review.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Report moderation queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModerationReportItem"
+                  pagination:
+                    $ref: "#/components/schemas/LimitPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/content/{content_id}/approve:
+    post:
+      summary: Manually publish a clean moderation item
+      description: Clean validated uploads are normally auto-published by the worker. This endpoint remains for legacy or explicitly held clean items and rejects non-clean scan states.
+      operationId: approveContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Approved and published content.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ApprovedContent"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/content/{content_id}/reject:
+    post:
+      summary: Reject content from moderation
+      operationId: rejectContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationReviewRequest"
+      responses:
+        "200":
+          description: Content rejected and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedContent"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/content/{content_id}/hide:
+    post:
+      summary: Hide published content from catalog and downloads
+      operationId: hideContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationReviewRequest"
+      responses:
+        "200":
+          description: Content hidden and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedContent"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/content/{content_id}/restore:
+    post:
+      summary: Restore hidden clean content to the public catalog
+      description: Only hidden content whose latest `.bee` file scan is clean can be restored. Skipped, failed, suspicious, or infected scans must be rescanned or rejected instead.
+      operationId: restoreContent
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationOptionalReasonRequest"
+      responses:
+        "200":
+          description: Content restored to published state and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedContent"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/comments/{comment_id}/approve:
+    post:
+      summary: Approve a pending comment and publish it
+      operationId: approveComment
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Comment made visible and content comment counter updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedComment"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/comments/{comment_id}/hide:
+    post:
+      summary: Hide a visible or pending comment
+      operationId: hideComment
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationReviewRequest"
+      responses:
+        "200":
+          description: Comment hidden and content comment counter adjusted if needed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedComment"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/reports/{report_id}/status:
+    post:
+      summary: Update report review status
+      operationId: reviewReport
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportReviewRequest"
+      responses:
+        "200":
+          description: Report review status updated and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ModeratedReport"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users:
+    get:
+      summary: List users for admin management
+      operationId: listAdminUsers
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum:
+              - user
+              - moderator
+              - admin
+              - owner
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+      responses:
+        "200":
+          description: Active users visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminUser"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users/{user_id}/ban:
+    post:
+      summary: Ban a user and revoke active sessions
+      operationId: banAdminUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserActionRequest"
+      responses:
+        "200":
+          description: User banned and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users/{user_id}/unban:
+    post:
+      summary: Remove a user ban
+      operationId: unbanAdminUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserActionRequest"
+      responses:
+        "200":
+          description: User unbanned and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users/{user_id}/roles:
+    patch:
+      summary: Replace a user's role set
+      operationId: setAdminUserRoles
+      description: The user role is always retained. Owner role changes require an owner session and the last active owner cannot be removed.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserRolesRequest"
+      responses:
+        "200":
+          description: User roles updated and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/audit-log:
+    get:
+      summary: List audit log entries
+      operationId: listAdminAuditLog
+      description: Returns recent administrative and moderation audit entries with keyset pagination. Requires admin or owner role.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+            maxLength: 80
+        - name: actor_user_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Audit log entries visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLogEntry"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/jobs:
+    get:
+      summary: List worker jobs
+      operationId: listAdminJobs
+      description: Returns worker jobs for operational inspection with keyset pagination. Requires admin or owner role.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: queue
+          in: query
+          schema:
+            type: string
+            enum:
+              - file_scan_queue
+              - image_processing_queue
+              - search_index_queue
+              - email_queue
+              - moderation_queue
+              - cleanup_queue
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - running
+              - succeeded
+              - failed
+              - dead
+        - name: job_type
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Worker jobs visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminJob"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/jobs/{job_id}/retry:
+    post:
+      summary: Retry a failed or dead worker job
+      operationId: retryAdminJob
+      description: Moves a failed or dead job back to pending, resets attempts, clears worker lock/error state, and writes an audit log entry.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminJobRetryRequest"
+      responses:
+        "200":
+          description: Job queued for retry and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminJob"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/files:
+    get:
+      summary: List content files
+      operationId: listAdminFiles
+      description: Returns content file metadata for operational inspection without exposing storage object keys. Requires admin or owner role.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: scan_status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - running
+              - clean
+              - suspicious
+              - infected
+              - failed
+              - skipped
+        - name: bucket
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: content_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: hash
+          in: query
+          schema:
+            type: string
+            pattern: "^[a-f0-9]{64}$"
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Content files visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminFile"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/files/{file_id}/rescan:
+    post:
+      summary: Queue a content file re-scan
+      operationId: rescanAdminFile
+      description: Resets failed, suspicious, or infected content files back to pending scan, queues a new scan job, moves the content item to pending_scan, and writes an audit log entry.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminFileRescanRequest"
+      responses:
+        "200":
+          description: File queued for re-scan and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminFileRescanResult"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/categories:
+    get:
+      summary: List categories for admin management
+      operationId: listAdminCategories
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: All categories visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Category"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/categories/{category_id}:
+    patch:
+      summary: Update category settings
+      operationId: updateAdminCategory
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: category_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCategoryUpdateRequest"
+      responses:
+        "200":
+          description: Category updated and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Category"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/tags:
+    get:
+      summary: List tags for admin management
+      operationId: listAdminTags
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Tags visible to admin and owner roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create a system or user-visible tag
+      operationId: createAdminTag
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTagCreateRequest"
+      responses:
+        "201":
+          description: Tag created and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Tag"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/tags/{tag_id}:
+    patch:
+      summary: Update tag settings
+      operationId: updateAdminTag
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTagUpdateRequest"
+      responses:
+        "200":
+          description: Tag updated and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Tag"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: beeba_access_token
+      description: Browser session cookie. Unsafe methods authenticated by cookie also require `X-CSRF-Token` matching the `beeba_csrf_token` cookie.
+  responses:
+    Error:
+      description: Consistent API error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - environment
+        - started_at
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+        environment:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+    ReadyResponse:
+      type: object
+      required:
+        - status
+        - service
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+        service:
+          type: string
+    APIStatusResponse:
+      type: object
+      required:
+        - service
+        - api_version
+        - environment
+        - max_upload_b
+      properties:
+        service:
+          type: string
+        api_version:
+          type: string
+          enum:
+            - v1
+        environment:
+          type: string
+        max_upload_b:
+          type: integer
+          format: int64
+          minimum: 1
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+    Category:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - description
+        - sort_order
+        - is_active
+        - published_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          enum:
+            - worlds
+            - avatars
+            - props
+            - prefabs
+        name:
+          type: string
+        description:
+          type: string
+        icon_key:
+          type:
+            - string
+            - "null"
+        sort_order:
+          type: integer
+        is_active:
+          type: boolean
+        published_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Tag:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - is_system
+        - published_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        is_system:
+          type: boolean
+        published_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminCategoryUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        icon_key:
+          type: string
+          maxLength: 80
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        is_active:
+          type: boolean
+    AdminTagCreateRequest:
+      type: object
+      required:
+        - slug
+        - name
+      additionalProperties: false
+      properties:
+        slug:
+          type: string
+          maxLength: 80
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        is_system:
+          type: boolean
+          default: false
+    AdminTagUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        is_system:
+          type: boolean
+    PublicContentItem:
+      type: object
+      required:
+        - id
+        - slug
+        - title
+        - description
+        - status
+        - visibility
+        - nsfw
+        - category
+        - author
+        - tags
+        - likes_count
+        - downloads_count
+        - comments_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - published
+        visibility:
+          type: string
+          enum:
+            - public
+        nsfw:
+          type: boolean
+        unlock_password:
+          type: string
+          description: Public Basis unlock password for published public catalog items.
+        category:
+          type: object
+          required:
+            - slug
+            - name
+          properties:
+            slug:
+              type: string
+            name:
+              type: string
+        author:
+          type: object
+          required:
+            - id
+            - username
+          properties:
+            id:
+              type: string
+              format: uuid
+            username:
+              type: string
+            display_name:
+              type:
+                - string
+                - "null"
+            avatar_image_id:
+              type:
+                - string
+                - "null"
+              format: uuid
+        tags:
+          type: array
+          items:
+            type: object
+            required:
+              - slug
+              - name
+            properties:
+              slug:
+                type: string
+              name:
+                type: string
+        preview_image_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        likes_count:
+          type: integer
+          minimum: 0
+        downloads_count:
+          type: integer
+          minimum: 0
+        comments_count:
+          type: integer
+          minimum: 0
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PublicProfile:
+      type: object
+      required:
+        - id
+        - username
+        - published_count
+        - likes_count
+        - downloads_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type:
+            - string
+            - "null"
+        avatar_image_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        published_count:
+          type: integer
+          minimum: 0
+        likes_count:
+          type: integer
+          minimum: 0
+        downloads_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PublicContentDetail:
+      allOf:
+        - $ref: "#/components/schemas/PublicContentItem"
+        - type: object
+          required:
+            - gallery
+          properties:
+            file:
+              $ref: "#/components/schemas/PublicContentFile"
+            gallery:
+              type: array
+              items:
+                $ref: "#/components/schemas/PublicContentImage"
+    PublicContentFile:
+      type: object
+      required:
+        - file_size
+        - file_hash_sha256
+        - original_filename
+      properties:
+        file_size:
+          type: integer
+          format: int64
+          minimum: 1
+        file_hash_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        original_filename:
+          type: string
+    PublicContentImage:
+      type: object
+      required:
+        - id
+        - url
+        - alt_text
+        - width
+        - height
+        - is_primary
+        - sort_order
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        alt_text:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        is_primary:
+          type: boolean
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    PublicComment:
+      type: object
+      required:
+        - id
+        - content_id
+        - user_id
+        - username
+        - body
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type:
+            - string
+            - "null"
+        parent_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        body:
+          type: string
+        status:
+          type: string
+          enum:
+            - visible
+            - hidden
+            - deleted
+            - pending_moderation
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateCommentRequest:
+      type: object
+      required:
+        - body
+      properties:
+        parent_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    LikeResult:
+      type: object
+      required:
+        - content_id
+        - liked
+        - likes_count
+      properties:
+        content_id:
+          type: string
+          format: uuid
+        liked:
+          type: boolean
+        likes_count:
+          type: integer
+          minimum: 0
+    ReportContentRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 120
+        details:
+          type: string
+          maxLength: 2000
+    ContentReport:
+      type: object
+      required:
+        - id
+        - content_id
+        - user_id
+        - reason
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        details:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - open
+            - in_review
+            - resolved
+            - rejected
+        created_at:
+          type: string
+          format: date-time
+    OwnerContentItem:
+      type: object
+      required:
+        - id
+        - slug
+        - title
+        - description
+        - status
+        - visibility
+        - nsfw
+        - category
+        - tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - uploaded
+            - pending_scan
+            - scan_failed
+            - pending_moderation
+            - approved
+            - published
+            - rejected
+            - hidden
+            - deleted
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+        nsfw:
+          type: boolean
+        unlock_password:
+          type: string
+          description: Basis unlock password visible only to the authenticated owner.
+        category:
+          type: object
+          required:
+            - slug
+            - name
+          properties:
+            slug:
+              type: string
+            name:
+              type: string
+        tags:
+          type: array
+          items:
+            type: object
+            required:
+              - slug
+              - name
+            properties:
+              slug:
+                type: string
+              name:
+                type: string
+        file:
+          $ref: "#/components/schemas/OwnerContentFile"
+        moderation:
+          $ref: "#/components/schemas/OwnerModerationFeedback"
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        hidden_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OwnerContentUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 140
+        description:
+          type: string
+          maxLength: 4000
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+        nsfw:
+          type: boolean
+        tags:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+    ProfileUpdateRequest:
+      type: object
+      required:
+        - display_name
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          maxLength: 80
+          description: Empty string clears the display name and falls back to username publicly.
+    PasswordChangeRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      additionalProperties: false
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+        new_password:
+          type: string
+          minLength: 12
+          maxLength: 128
+    OwnerContentFile:
+      type: object
+      required:
+        - id
+        - scan_status
+        - file_size
+        - file_hash_sha256
+        - original_filename
+        - safe_filename
+      properties:
+        id:
+          type: string
+          format: uuid
+        scan_status:
+          type: string
+          enum:
+            - pending
+            - running
+            - clean
+            - suspicious
+            - infected
+            - failed
+            - skipped
+        file_size:
+          type: integer
+          format: int64
+        file_hash_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        original_filename:
+          type: string
+        safe_filename:
+          type: string
+    OwnerModerationFeedback:
+      type: object
+      required:
+        - action
+        - reason
+        - created_at
+      properties:
+        action:
+          type: string
+          enum:
+            - reject
+            - hide
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ContentUploadRequest:
+      type: object
+      required:
+        - category
+        - title
+        - unlock_password
+        - file
+      properties:
+        category:
+          type: string
+          enum:
+            - worlds
+            - avatars
+            - props
+            - prefabs
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 5000
+        version:
+          type: string
+          maxLength: 80
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+          default: public
+        unlock_password:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Basis unlock password. Public items expose it in catalog after publish; private items expose it only to the owner.
+        nsfw:
+          type: boolean
+          default: false
+        file:
+          type: string
+          format: binary
+          description: ".bee package. Stored in quarantine until scan and moderation complete."
+    ContentUploadCreated:
+      type: object
+      required:
+        - content_id
+        - file_id
+        - job_id
+        - status
+        - scan_status
+        - storage_bucket
+        - storage_key
+        - file_hash_sha256
+        - file_size
+        - original_filename
+        - visibility
+        - created_at
+      properties:
+        content_id:
+          type: string
+          format: uuid
+        file_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending_scan
+        scan_status:
+          type: string
+          enum:
+            - pending
+        storage_bucket:
+          type: string
+        storage_key:
+          type: string
+        file_hash_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        file_size:
+          type: integer
+          format: int64
+        original_filename:
+          type: string
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+        created_at:
+          type: string
+          format: date-time
+    ImageUploadRequest:
+      type: object
+      required:
+        - file
+      properties:
+        alt_text:
+          type: string
+          maxLength: 500
+        file:
+          type: string
+          format: binary
+          description: JPEG or PNG image. Stored in preview storage and asynchronously converted to compressed WebP before public serving. The default maximum upload size is 8 MiB unless configured differently.
+    UploadedImage:
+      type: object
+      required:
+        - id
+        - kind
+        - url
+        - alt_text
+        - width
+        - height
+        - file_size
+        - file_hash_sha256
+        - mime_type_detected
+        - processing_status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - user_avatar
+            - content_image
+        content_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri-reference
+        alt_text:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        file_size:
+          type: integer
+          format: int64
+          minimum: 1
+        file_hash_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        mime_type_detected:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+        processing_status:
+          type: string
+          enum:
+            - pending
+            - running
+            - processed
+            - failed
+        is_primary:
+          type: boolean
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    ContentImageUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        alt_text:
+          type: string
+          maxLength: 500
+        is_primary:
+          type: boolean
+          description: When true, this image becomes the single primary preview for the content item.
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 1000
+    CursorPagination:
+      type: object
+      required:
+        - limit
+      properties:
+        next_cursor:
+          type:
+            - string
+            - "null"
+        limit:
+          type: integer
+          minimum: 1
+    SearchPagination:
+      type: object
+      required:
+        - limit
+        - offset
+        - total
+      properties:
+        next_cursor:
+          type:
+            - string
+            - "null"
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+          maximum: 50
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: "^[a-zA-Z0-9_][a-zA-Z0-9_-]{2,31}$"
+        display_name:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          format: password
+    PublicUser:
+      type: object
+      required:
+        - id
+        - email
+        - username
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        display_name:
+          type:
+            - string
+            - "null"
+        avatar_image_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        email_verified_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminUser:
+      type: object
+      required:
+        - id
+        - email
+        - username
+        - roles
+        - content_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        display_name:
+          type:
+            - string
+            - "null"
+        avatar_image_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        email_verified_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - user
+              - moderator
+              - admin
+              - owner
+        banned_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        deleted_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        content_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminUserActionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    AdminUserRolesRequest:
+      type: object
+      required:
+        - roles
+      additionalProperties: false
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - user
+              - moderator
+              - admin
+              - owner
+    AuditLogEntry:
+      type: object
+      required:
+        - id
+        - action
+        - entity_type
+        - before_json
+        - after_json
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        actor_username:
+          type:
+            - string
+            - "null"
+        actor_email:
+          type:
+            - string
+            - "null"
+          format: email
+        action:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        before_json:
+          type: object
+          additionalProperties: true
+        after_json:
+          type: object
+          additionalProperties: true
+        ip_address:
+          type:
+            - string
+            - "null"
+        user_agent:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+          format: date-time
+    AdminJob:
+      type: object
+      required:
+        - id
+        - queue_name
+        - job_type
+        - payload
+        - status
+        - attempt_count
+        - max_attempts
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        queue_name:
+          type: string
+          enum:
+            - file_scan_queue
+            - image_processing_queue
+            - search_index_queue
+            - email_queue
+            - moderation_queue
+            - cleanup_queue
+        job_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - succeeded
+            - failed
+            - dead
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        last_error:
+          type:
+            - string
+            - "null"
+        next_retry_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        locked_by:
+          type:
+            - string
+            - "null"
+        locked_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminJobRetryRequest:
+      type: object
+      required:
+        - reason
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AdminFile:
+      type: object
+      required:
+        - id
+        - content_id
+        - content_title
+        - content_status
+        - content_visibility
+        - author_id
+        - author_username
+        - bucket
+        - original_filename
+        - safe_filename
+        - file_size
+        - file_hash_sha256
+        - extension
+        - scan_status
+        - scan_result
+        - uploaded_by
+        - uploaded_by_username
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        content_title:
+          type: string
+        content_status:
+          type: string
+        content_visibility:
+          type: string
+          enum:
+            - public
+            - private
+        author_id:
+          type: string
+          format: uuid
+        author_username:
+          type: string
+        bucket:
+          type: string
+        original_filename:
+          type: string
+        safe_filename:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+          minimum: 1
+        file_hash_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        mime_type_detected:
+          type:
+            - string
+            - "null"
+        extension:
+          type: string
+          enum:
+            - .bee
+        scan_status:
+          type: string
+          enum:
+            - pending
+            - running
+            - clean
+            - suspicious
+            - infected
+            - failed
+            - skipped
+        scan_result:
+          type: object
+          additionalProperties: true
+        uploaded_by:
+          type: string
+          format: uuid
+        uploaded_by_username:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminFileRescanRequest:
+      type: object
+      required:
+        - reason
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AdminFileRescanResult:
+      type: object
+      required:
+        - file
+        - job_id
+      properties:
+        file:
+          $ref: "#/components/schemas/AdminFile"
+        job_id:
+          type: string
+          format: uuid
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    EmailVerifyRequest:
+      type: object
+      required:
+        - token
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          pattern: "^bb_ev_.+"
+    TokenPair:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+        - refresh_expires_in
+        - user
+      properties:
+        access_token:
+          type: string
+          description: Opaque short-lived bearer token. Store server-side hash only.
+        refresh_token:
+          type: string
+          description: Opaque refresh token. Store server-side hash only.
+        token_type:
+          type: string
+          enum:
+            - Bearer
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds.
+        refresh_expires_in:
+          type: integer
+          description: Refresh token lifetime in seconds.
+        user:
+          $ref: "#/components/schemas/PublicUser"
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+    AdminStatus:
+      type: object
+      required:
+        - status
+        - actor
+        - roles
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        actor:
+          $ref: "#/components/schemas/PublicUser"
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - user
+              - moderator
+              - admin
+              - owner
+    ModerationQueueItem:
+      type: object
+      required:
+        - content_id
+        - title
+        - description
+        - status
+        - visibility
+        - nsfw
+        - category_slug
+        - category_name
+        - author_id
+        - author_username
+        - created_at
+        - updated_at
+      properties:
+        content_id:
+          type: string
+          format: uuid
+        file_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - uploaded
+            - pending_scan
+            - scan_failed
+            - pending_moderation
+            - approved
+            - published
+            - rejected
+            - hidden
+            - deleted
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+        nsfw:
+          type: boolean
+        category_slug:
+          type: string
+          enum:
+            - worlds
+            - avatars
+            - props
+            - prefabs
+        category_name:
+          type: string
+        author_id:
+          type: string
+          format: uuid
+        author_username:
+          type: string
+        author_display_name:
+          type:
+            - string
+            - "null"
+        scan_status:
+          type: string
+          enum:
+            - pending
+            - running
+            - clean
+            - suspicious
+            - infected
+            - failed
+            - skipped
+        file_size:
+          type: integer
+          format: int64
+          minimum: 0
+        file_hash_sha256:
+          type: string
+        original_filename:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ApprovedContent:
+      type: object
+      required:
+        - content_id
+        - file_id
+        - status
+        - visibility
+        - published_at
+      properties:
+        content_id:
+          type: string
+          format: uuid
+        file_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - published
+        visibility:
+          type: string
+          enum:
+            - public
+            - private
+        published_at:
+          type: string
+          format: date-time
+    ModerationReviewRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    ModerationOptionalReasonRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    ModeratedContent:
+      type: object
+      required:
+        - content_id
+        - status
+        - updated_at
+      properties:
+        content_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - published
+            - rejected
+            - hidden
+        hidden_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        reason:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    LimitPagination:
+      type: object
+      required:
+        - limit
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+    ModerationCommentItem:
+      type: object
+      required:
+        - comment_id
+        - content_id
+        - content_title
+        - body
+        - status
+        - author_id
+        - author_username
+        - content_author_id
+        - content_author_username
+        - created_at
+        - updated_at
+      properties:
+        comment_id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        content_title:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum:
+            - visible
+            - hidden
+            - deleted
+            - pending_moderation
+        author_id:
+          type: string
+          format: uuid
+        author_username:
+          type: string
+        author_display_name:
+          type:
+            - string
+            - "null"
+        content_author_id:
+          type: string
+          format: uuid
+        content_author_username:
+          type: string
+        content_author_display_name:
+          type:
+            - string
+            - "null"
+        parent_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ModeratedComment:
+      type: object
+      required:
+        - comment_id
+        - content_id
+        - status
+        - comments_count
+        - updated_at
+      properties:
+        comment_id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - visible
+            - hidden
+            - deleted
+            - pending_moderation
+        comments_count:
+          type: integer
+          minimum: 0
+        reason:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    ModerationReportItem:
+      type: object
+      required:
+        - report_id
+        - content_id
+        - content_title
+        - reason
+        - status
+        - created_at
+        - updated_at
+      properties:
+        report_id:
+          type: string
+          format: uuid
+        content_id:
+          type: string
+          format: uuid
+        content_title:
+          type: string
+        comment_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        reason:
+          type: string
+        details:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - open
+            - in_review
+            - resolved
+            - rejected
+        reporter_user_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        reporter_username:
+          type:
+            - string
+            - "null"
+        reporter_display_name:
+          type:
+            - string
+            - "null"
+        resolved_by:
+          type:
+            - string
+            - "null"
+          format: uuid
+        resolved_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReportReviewRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - in_review
+            - resolved
+            - rejected
+        reason:
+          type: string
+          maxLength: 500
+    ModeratedReport:
+      type: object
+      required:
+        - report_id
+        - status
+        - updated_at
+      properties:
+        report_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - open
+            - in_review
+            - resolved
+            - rejected
+        resolved_by:
+          type:
+            - string
+            - "null"
+          format: uuid
+        resolved_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        reason:
+          type: string
+        updated_at:
+          type: string
+          format: date-time

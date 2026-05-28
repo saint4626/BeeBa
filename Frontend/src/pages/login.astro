@@ -1,0 +1,16 @@
+---
+import AuthPage from "../components/auth/AuthPage.vue";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const next = Astro.url.searchParams.get("next");
+const redirectHref = next?.startsWith("/") && !next.startsWith("//") ? next : "/profile";
+---
+
+<BaseLayout
+  title="Login - BeeBa"
+  description="Sign in or create a BeeBa account to upload and manage Basis / VR assets."
+  canonicalPath="/login"
+  mainClass="main--flush-end"
+>
+  <AuthPage client:load locale="en" homeHref="/" profileHref="/profile" redirectHref={redirectHref} />
+</BaseLayout>

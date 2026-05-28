@@ -1,0 +1,244 @@
+---
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Download,
+  Heart,
+  KeyRound,
+  Link,
+  MessageCircle,
+  Package,
+  ShieldCheck,
+} from "lucide";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import SocialPanel from "../../components/content/SocialPanel.vue";
+import LucideIcon from "../../components/ui/LucideIcon.astro";
+import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { getPublicContent } from "../../lib/api/content";
+import { BYTE_UNITS, HASH_DISPLAY } from "../../lib/config/runtime";
+import type { PublicContentDetail, PublicContentImage } from "../../lib/api/types";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const publicAPIBaseURL = getPublicAPIBaseURL();
+
+let item: PublicContentDetail | null = null;
+let error = "";
+
+if (!id) {
+  return Astro.redirect("/catalog", 302);
+}
+
+try {
+  item = await getPublicContent(id);
+} catch (caught) {
+  if (caught instanceof Error && caught.message.toLowerCase().includes("not found")) {
+    return new Response(null, { status: 404 });
+  }
+  error = caught instanceof Error ? caught.message : "Failed to load content.";
+}
+
+const pageTitle = item ? `${item.title} - BeeBa` : "Content unavailable - BeeBa";
+const description = item?.description || "BeeBa Basis / VR content detail page.";
+const canonicalPath = `/content/${id}`;
+const downloadURL = item ? `${publicAPIBaseURL}/content/${item.id}/download` : "";
+const absoluteDownloadURL = downloadURL ? new URL(downloadURL, Astro.url).href : "";
+const loginHref = `/login?next=${encodeURIComponent(Astro.url.pathname)}`;
+const gallery = item ? uniqueImages(item) : [];
+const primaryImage = gallery[0];
+const publishedLabel = item?.published_at ? formatDate(item.published_at) : "Not published";
+const categoryInitials = item ? item.category.name.slice(0, 2).toUpperCase() : "BB";
+
+function uniqueImages(content: PublicContentDetail): PublicContentImage[] {
+  const seen = new Set<string>();
+  return content.gallery.filter((image) => {
+    if (seen.has(image.id)) return false;
+    seen.add(image.id);
+    return true;
+  });
+}
+
+function mediaURL(image: PublicContentImage) {
+  return `${publicAPIBaseURL}/media/${image.id}`;
+}
+
+function formatBytes(value?: number) {
+  if (!value) return "Unknown";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unit = 0;
+  while (size >= BYTE_UNITS.kib && unit < units.length - 1) {
+    size /= BYTE_UNITS.kib;
+    unit += 1;
+  }
+  return `${unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function shortHash(value?: string) {
+  if (!value) return "Unavailable";
+  return `${value.slice(0, HASH_DISPLAY.prefixLength)}...${value.slice(-HASH_DISPLAY.suffixLength)}`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+---
+
+<BaseLayout title={pageTitle} description={description} canonicalPath={canonicalPath} mainClass="main--flush-end">
+  <div class="detail-shell">
+    {error ? (
+      <div class="catalog-empty" role="status">
+        <div class="catalog-empty__title">
+          <span aria-hidden="true"></span>
+          <strong>Content unavailable</strong>
+          <span aria-hidden="true"></span>
+        </div>
+        <p>{error}</p>
+      </div>
+    ) : item && (
+      <>
+        <header class="detail-header" aria-labelledby="content-title">
+          <div class="detail-kicker">
+            <a href={`/catalog/${item.category.slug}`}>{item.category.name}</a>
+            {item.nsfw && <span>NSFW</span>}
+          </div>
+          <div class="detail-header__body">
+            <div>
+              <h1 id="content-title">{item.title}</h1>
+            </div>
+            <div class="detail-header__stats" aria-label="Asset stats">
+              <span><LucideIcon node={Download} size={14} /> {item.downloads_count.toLocaleString()}</span>
+              <span><LucideIcon node={Heart} size={14} /> {item.likes_count.toLocaleString()}</span>
+              <span><LucideIcon node={MessageCircle} size={14} /> {item.comments_count.toLocaleString()}</span>
+            </div>
+          </div>
+        </header>
+
+        <section class="detail-layout" aria-labelledby="content-title">
+          <div class="detail-main">
+            <div class="detail-gallery" aria-label={`${item.title} gallery`}>
+              {primaryImage ? (
+                <div class="detail-gallery__carousel" data-content-carousel>
+                  <div class="detail-gallery__viewport">
+                    <div class="detail-gallery__track" data-carousel-track tabindex="0">
+                      {gallery.map((image, index) => (
+                        <figure class="detail-gallery__slide" data-carousel-slide>
+                          <img src={mediaURL(image)} alt={image.alt_text || item.title} loading={index === 0 ? "eager" : "lazy"} />
+                        </figure>
+                      ))}
+                    </div>
+                    {gallery.length > 1 && (
+                      <>
+                        <button class="detail-gallery__arrow detail-gallery__arrow--prev" type="button" data-carousel-prev aria-label="Previous gallery image">
+                          <LucideIcon node={ChevronLeft} size={20} />
+                        </button>
+                        <button class="detail-gallery__arrow detail-gallery__arrow--next" type="button" data-carousel-next aria-label="Next gallery image">
+                          <LucideIcon node={ChevronRight} size={20} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {gallery.length > 1 && (
+                    <div class="detail-gallery__thumbs" aria-label="Gallery thumbnails">
+                      {gallery.map((image, index) => (
+                        <button type="button" data-carousel-thumb data-slide-index={String(index)} aria-label={`Show gallery image ${index + 1}`} aria-current={index === 0 ? "true" : "false"}>
+                          <img src={mediaURL(image)} alt="" loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div class="detail-gallery__primary detail-gallery__primary--placeholder" aria-label="No preview image">
+                  <span>{categoryInitials}</span>
+                </div>
+              )}
+            </div>
+
+            <article class="detail-description">
+              <p>{item.description || "No description provided."}</p>
+              {item.tags.length > 0 && (
+                <div class="detail-tags" aria-label="Asset tags">
+                  {item.tags.map((tag) => <a href={`/catalog?tags=${encodeURIComponent(tag.slug)}`}>{tag.name}</a>)}
+                </div>
+              )}
+            </article>
+          </div>
+
+          <aside class="detail-sidebar" aria-label="Asset details">
+            <div class="detail-panel detail-panel--actions">
+              <a class="button button--primary detail-download" href={downloadURL}>
+                <LucideIcon node={Download} size={16} />
+                <span>Download .bee</span>
+              </a>
+              <button class="detail-icon-button" type="button" data-copy-text={absoluteDownloadURL} data-copy-label="Basis download link copied" aria-label="Copy Basis download link" title="Copy Basis download link">
+                <LucideIcon node={Link} size={16} />
+              </button>
+              {item.unlock_password && (
+                <button class="detail-icon-button" type="button" data-copy-text={item.unlock_password} data-copy-label="Basis password copied" aria-label="Copy Basis password" title="Copy Basis password">
+                  <LucideIcon node={KeyRound} size={16} />
+                </button>
+              )}
+            </div>
+
+            <div class="detail-panel">
+              <div class="detail-panel__head">
+                <span><LucideIcon node={Package} size={15} /> Details</span>
+              </div>
+              <dl class="detail-list">
+                <div>
+                  <dt>Type</dt>
+                  <dd>{item.category.name}</dd>
+                </div>
+                <div>
+                  <dt>Author</dt>
+                  <dd class="detail-author">
+                    {item.author.avatar_image_id && <img src={`${publicAPIBaseURL}/media/${item.author.avatar_image_id}`} alt="" />}
+                    <a href={`/users/${item.author.username}`}>{item.author.display_name || item.author.username}</a>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Published</dt>
+                  <dd>{publishedLabel}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="detail-panel">
+              <div class="detail-panel__head">
+                <span><LucideIcon node={ShieldCheck} size={15} /> Package</span>
+              </div>
+              <dl class="detail-list">
+                <div>
+                  <dt>File</dt>
+                  <dd>{item.file?.original_filename ?? `${item.slug}.bee`}</dd>
+                </div>
+                <div>
+                  <dt>Size</dt>
+                  <dd>{formatBytes(item.file?.file_size)}</dd>
+                </div>
+                <div>
+                  <dt>SHA-256</dt>
+                  <dd class="detail-hash">
+                    <code>{shortHash(item.file?.file_hash_sha256)}</code>
+                    {item.file?.file_hash_sha256 && (
+                      <button type="button" data-copy-text={item.file.file_hash_sha256} data-copy-label="SHA-256 copied" aria-label="Copy SHA-256">
+                        <LucideIcon node={Copy} size={13} />
+                      </button>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </aside>
+        </section>
+
+        <section class="detail-discussion" aria-label="Discussion">
+          <SocialPanel contentId={item.id} initialLikes={item.likes_count} loginHref={loginHref} client:load />
+        </section>
+      </>
+    )}
+  </div>
+</BaseLayout>

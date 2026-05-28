@@ -1,0 +1,315 @@
+---
+import { Activity, BookOpen, ChevronDown, Grid2X2, Home, LogOut, Search, Settings, ShieldCheck, Upload, UserRound } from "lucide";
+import Dropdown from "../components/ui/Dropdown.astro";
+import LucideIcon from "../components/ui/LucideIcon.astro";
+import { getServerAPIBaseURL } from "../lib/api/client";
+import type { PublicUser } from "../lib/api/types";
+import { alternateLocale, localizedPath, normalizeLocale, ui } from "../lib/i18n";
+import { PUBLIC_STATUS_URL } from "astro:env/client";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  mainClass?: string;
+}
+
+const {
+  title,
+  description,
+  canonicalPath = Astro.url.pathname,
+  mainClass = "",
+} = Astro.props;
+
+const site = Astro.site ?? new URL("http://localhost:4321");
+const canonical = new URL(canonicalPath, site);
+const brandLogo256 = "/brand/beeba-logo-256.webp";
+const brandLogo1024 = "/brand/beeba-logo-1024.webp";
+const socialImage = new URL(brandLogo1024, site);
+const runtimeEnv = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env;
+const statusURL = runtimeEnv?.PUBLIC_STATUS_URL ?? PUBLIC_STATUS_URL;
+const locale = normalizeLocale(Astro.currentLocale);
+const t = ui[locale];
+const nextLocale = alternateLocale(locale);
+const langPath = localizedPath(nextLocale, Astro.url.pathname.replace(/^\/ru(?=\/|$)/, "") || "/");
+const homePath = localizedPath(locale, "/");
+const catalogPath = localizedPath(locale, "/catalog");
+const apiPath = localizedPath(locale, "/api-reference");
+const uploadPath = localizedPath(locale, "/upload");
+const loginPath = localizedPath(locale, "/login");
+const profilePath = localizedPath(locale, "/profile");
+const moderationPath = "/admin/moderation";
+const requestCookie = Astro.request.headers.get("cookie") ?? "";
+const hasAuthCookie = /(?:^|;\s*)beeba_access_token=/.test(requestCookie);
+let authUser: PublicUser | null = null;
+let authCanManage = false;
+const currentPath = Astro.url.pathname.replace(/^\/ru(?=\/|$)/, "") || "/";
+const currentCategory = currentPath.match(/^\/catalog\/([^/]+)/)?.[1] ?? "";
+const languageLabel = locale === "ru" ? "Русский" : "English";
+const nextLanguageLabel = nextLocale === "ru" ? "Русский" : "English";
+const searchCategories = [
+  { value: "", label: locale === "ru" ? "Все" : "All" },
+  { value: "worlds", label: locale === "ru" ? "Миры" : "Worlds" },
+  { value: "avatars", label: locale === "ru" ? "Аватары" : "Avatars" },
+  { value: "props", label: locale === "ru" ? "Props" : "Props" },
+  { value: "prefabs", label: locale === "ru" ? "Prefabs" : "Prefabs" },
+];
+const activeSearchCategory = searchCategories.find((category) => category.value === currentCategory) ?? searchCategories[0];
+const activeNav = (path: string) => {
+  if (path === "/") return currentPath === "/";
+  return currentPath === path || currentPath.startsWith(`${path}/`);
+};
+const initialsFor = (user: PublicUser | null) => (user?.display_name || user?.username || "BB").slice(0, 2).toUpperCase();
+
+if (hasAuthCookie) {
+  try {
+    const meResponse = await fetch(`${getServerAPIBaseURL()}/auth/me`, {
+      headers: {
+        Accept: "application/json",
+        Cookie: requestCookie,
+      },
+    });
+
+    if (meResponse.ok) {
+      const mePayload = (await meResponse.json()) as { data: PublicUser };
+      authUser = mePayload.data;
+    }
+  } catch {
+    authUser = null;
+  }
+
+  if (authUser) {
+    try {
+      const adminResponse = await fetch(`${getServerAPIBaseURL()}/admin/status`, {
+        headers: {
+          Accept: "application/json",
+          Cookie: requestCookie,
+        },
+      });
+      authCanManage = adminResponse.ok;
+    } catch {
+      authCanManage = false;
+    }
+  }
+}
+
+const authNavUser = authUser
+  ? JSON.stringify({
+      username: authUser.username,
+      display_name: authUser.display_name,
+      avatar_image_id: authUser.avatar_image_id,
+    })
+  : "";
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/webp" sizes="256x256" href={brandLogo256} />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <style is:inline>
+      @font-face {
+        font-family: "Varela";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("/fonts/varela-v17-latin.ttf") format("truetype");
+      }
+
+      :root {
+        color-scheme: dark;
+        background: #0f0f0f;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: #0f0f0f;
+        color: #ffffff;
+        font-family: Varela, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+      }
+    </style>
+    <link rel="preload" href="/fonts/varela-v17-latin.ttf" as="font" type="font/ttf" crossorigin />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical.href} />
+    <meta property="og:image" content={socialImage.href} />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage.href} />
+    <script is:inline>
+      document.documentElement.classList.add("beeba-motion");
+    </script>
+  </head>
+  <body>
+    <div class="page-progress" aria-hidden="true" data-page-progress>
+      <span></span>
+    </div>
+    <div class="site-shell">
+      <header class="site-header">
+        <div class="site-header__top">
+          <a class="brand" href={homePath} aria-label="BeeBa home">
+            <img class="brand__mark" src={brandLogo256} alt="" width="38" height="38" decoding="async" />
+            <span class="brand__name" aria-label="BeeBa">
+              <span class="brand__name-accent">.BEE</span><span>BA</span>
+            </span>
+          </a>
+          <form class="global-search" action={catalogPath} method="get" data-global-search>
+            <label class="sr-only" for="global-search">{t.nav.searchPlaceholder}</label>
+            <input id="global-search-category" type="hidden" name="category" value={activeSearchCategory.value} />
+            <Dropdown class="global-search__scope" label="Choose asset type" width="sm">
+              <span slot="trigger" data-search-category-label>{activeSearchCategory.label}</span>
+              <LucideIcon slot="trigger" node={ChevronDown} size={14} />
+              {searchCategories.map((category) => (
+                <button
+                  class:list={["ui-dropdown__item", category.value === activeSearchCategory.value && "ui-dropdown__item--active"]}
+                  type="button"
+                  data-search-category-option
+                  data-value={category.value}
+                  aria-pressed={category.value === activeSearchCategory.value ? "true" : "false"}
+                >
+                  {category.label}
+                </button>
+              ))}
+            </Dropdown>
+            <input id="global-search" name="q" type="search" placeholder={t.nav.searchPlaceholder} />
+            <button class="global-search__submit" type="submit" aria-label="Search">
+              <LucideIcon node={Search} size={17} />
+            </button>
+          </form>
+          <div class="auth-nav" data-auth-nav data-auth-user={authNavUser} data-auth-admin-access={authCanManage ? "1" : "0"}>
+            <a class="button button--secondary auth-nav__manage" href={moderationPath} data-auth-manage hidden={!authCanManage}>
+              <LucideIcon node={ShieldCheck} size={16} />
+              <span>Manage</span>
+            </a>
+            <a
+              class:list={["button button--primary auth-nav__upload", !authUser && "button--disabled"]}
+              aria-disabled={authUser ? "false" : "true"}
+              href={authUser ? uploadPath : undefined}
+              data-auth-upload
+              data-upload-href={uploadPath}
+            >
+              <LucideIcon node={Upload} size={16} />
+              <span>{t.nav.upload}</span>
+            </a>
+            <a class="button button--secondary auth-nav__login" href={loginPath} data-auth-login hidden={Boolean(authUser)}>{t.nav.login}</a>
+            <details class="auth-nav__menu ui-dropdown ui-dropdown--end ui-dropdown--sm" data-auth-menu data-ui-dropdown hidden={!authUser}>
+              <summary aria-label="Open profile menu" data-auth-summary title={authUser?.display_name || authUser?.username || undefined}>
+                <img
+                  class="auth-nav__avatar"
+                  src={authUser?.avatar_image_id ? `/api/v1/media/${authUser.avatar_image_id}` : ""}
+                  alt=""
+                  data-auth-avatar
+                  hidden={!authUser?.avatar_image_id}
+                />
+                <span data-auth-initials hidden={Boolean(authUser?.avatar_image_id)}>{initialsFor(authUser)}</span>
+              </summary>
+              <div class="auth-nav__menu-panel ui-dropdown__menu">
+                <a class="auth-nav__menu-item ui-dropdown__item ui-dropdown__item--active" href={profilePath}>
+                  <LucideIcon node={UserRound} size={15} />
+                  <span>{t.nav.profile}</span>
+                </a>
+                <button class="auth-nav__menu-item ui-dropdown__item" type="button" data-auth-logout>
+                  <LucideIcon node={LogOut} size={15} />
+                  <span>{t.nav.logout}</span>
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="site-header__nav-row">
+          <nav class="site-nav" aria-label="Primary navigation">
+            <a class={`nav-link ${activeNav("/") ? "nav-link--active" : ""}`} href={homePath}><LucideIcon node={Home} size={15} />{t.nav.home}</a>
+            <a class={`nav-link ${activeNav("/catalog") ? "nav-link--active" : ""}`} href={catalogPath}><LucideIcon node={Grid2X2} size={15} />{t.nav.catalog}</a>
+            <a class={`nav-link ${activeNav("/api-reference") ? "nav-link--active" : ""}`} href={apiPath}><LucideIcon node={BookOpen} size={15} />{t.nav.api}</a>
+            <a class="nav-link" href={statusURL} data-astro-reload><LucideIcon node={Activity} size={15} />{t.nav.status}</a>
+          </nav>
+          <div class="site-header__page-actions" data-header-actions>
+            <slot name="header-actions" />
+          </div>
+          <Dropdown class="site-settings" label="Open site settings" align="end" width="sm">
+            <LucideIcon slot="trigger" node={Settings} size={17} />
+            <p class="ui-dropdown__label">Language</p>
+            <span class="ui-dropdown__item ui-dropdown__item--active" aria-current="true">{languageLabel}</span>
+            <a class="ui-dropdown__item" href={langPath}>{nextLanguageLabel}</a>
+          </Dropdown>
+        </div>
+      </header>
+      <div class="site-scroll" data-site-scroll>
+        <div class="site-scroll__content" data-site-scroll-content>
+          <main class:list={["main", mainClass]}>
+            <slot />
+          </main>
+          <footer class="site-footer">
+            <div class="page-container">
+              <nav class="site-footer__bar" aria-label="Footer navigation">
+                <span class="site-footer__copy">© BeeBa 2026</span>
+                <a href={homePath}>{t.nav.home}</a>
+                <a href={catalogPath}>{t.nav.catalog}</a>
+                <a href={apiPath}>{t.nav.api}</a>
+                <a href={statusURL} data-astro-reload>{t.nav.status}</a>
+                <span class="site-footer__group" aria-label="Club links">
+                  <span>Club</span>
+                  <a class="site-footer__icon-link" href="https://github.com/starsofmeta" aria-label="Stars of Meta on GitHub" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/github.svg" alt="" loading="lazy" />
+                  </a>
+                  <a class="site-footer__icon-link" href="https://t.me/metaversesearch" aria-label="Metaverse Search on Telegram" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/telegram.svg" alt="" loading="lazy" />
+                  </a>
+                </span>
+                <span class="site-footer__group" aria-label="BasisVR links">
+                  <span>BasisVR</span>
+                  <a class="site-footer__icon-link" href="https://github.com/BasisVR/Basis" aria-label="BasisVR Basis on GitHub" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/github.svg" alt="" loading="lazy" />
+                  </a>
+                  <a class="site-footer__icon-link" href="https://x.com/BasisVR" aria-label="BasisVR on X" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/x.svg" alt="" loading="lazy" />
+                  </a>
+                  <a class="site-footer__icon-link" href="https://discord.gg/v6ve6WT562" aria-label="BasisVR Discord" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/discord.svg" alt="" loading="lazy" />
+                  </a>
+                </span>
+                <span class="site-footer__group" aria-label="Personal contacts">
+                  <span>VAV1ST</span>
+                  <button class="site-footer__icon-link" type="button" title="Copy Discord: VAV1ST" aria-label="Copy Discord handle VAV1ST" data-copy-text="VAV1ST" data-copy-label="Discord handle copied">
+                    <img src="/icons/social/discord.svg" alt="" loading="lazy" />
+                  </button>
+                  <a class="site-footer__icon-link" href="https://t.me/vav1st" aria-label="VAV1ST on Telegram" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/telegram.svg" alt="" loading="lazy" />
+                  </a>
+                  <a class="site-footer__icon-link" href="https://x.com/VAV1ST" aria-label="VAV1ST on X" target="_blank" rel="noreferrer">
+                    <img src="/icons/social/x.svg" alt="" loading="lazy" />
+                  </a>
+                </span>
+              </nav>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </div>
+    <script>
+      import "../scripts/site-motion";
+    </script>
+  </body>
+</html>

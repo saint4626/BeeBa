@@ -1,0 +1,43 @@
+:8089 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	reverse_proxy kener:3000
+}
+
+:8088 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /healthz {
+		reverse_proxy backend:8080
+	}
+
+	handle /readyz {
+		reverse_proxy backend:8080
+	}
+
+	handle /openapi.yaml {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		reverse_proxy frontend:4321
+	}
+}

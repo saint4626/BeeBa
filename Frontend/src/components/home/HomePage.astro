@@ -1,0 +1,129 @@
+---
+import AssetCard from "../catalog/AssetCard.astro";
+import { listPublicContent } from "../../lib/api/content";
+import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { PAGE_LIMITS } from "../../lib/config/runtime";
+import { localizedPath, type Locale, ui } from "../../lib/i18n";
+import type { PublicContentItem } from "../../lib/api/types";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = ui[locale].home;
+const publicAPIBaseURL = getPublicAPIBaseURL();
+
+let featuredAssets: PublicContentItem[] = [];
+let latestAssets: PublicContentItem[] = [];
+let popularLoadFailed = false;
+
+try {
+  const [byLikes, byDownloads, newest] = await Promise.all([
+    listPublicContent({ sort: "likes", limit: PAGE_LIMITS.homeSource }),
+    listPublicContent({ sort: "downloads", limit: PAGE_LIMITS.homeSource }),
+    listPublicContent({ sort: "newest", limit: PAGE_LIMITS.homeNewest }),
+  ]);
+
+  const merged = [...byLikes.data, ...byDownloads.data];
+  featuredAssets = Array.from(new Map(merged.map((item) => [item.id, item])).values()).slice(0, PAGE_LIMITS.homeFeatured);
+  latestAssets = newest.data;
+} catch {
+  popularLoadFailed = true;
+}
+
+const placeholderAssets = [
+  { title: locale === "ru" ? "Первый мир сообщества" : "First community world", category: "Worlds", author: "BeeBa", tone: "world" as const },
+  { title: locale === "ru" ? "Аватар для Basis" : "Basis avatar", category: "Avatars", author: "BeeBa", tone: "avatar" as const },
+  { title: locale === "ru" ? "Интерактивный prop" : "Interactive prop", category: "Props", author: "BeeBa", tone: "prop" as const },
+  { title: locale === "ru" ? "Prefab для создателей" : "Creator prefab", category: "Prefabs", author: "BeeBa", tone: "prefab" as const },
+  { title: locale === "ru" ? "Публичный .bee ассет" : "Public .bee asset", category: "Worlds", author: "BeeBa", tone: "world" as const },
+  { title: locale === "ru" ? "Слот публикации" : "Publication slot", category: "Avatars", author: "BeeBa", tone: "avatar" as const },
+];
+
+const featured = featuredAssets.length ? featuredAssets : placeholderAssets;
+const latest = latestAssets.length ? latestAssets : [];
+const categories = [
+  { label: "Worlds", href: localizedPath(locale, "/catalog/worlds") },
+  { label: "Avatars", href: localizedPath(locale, "/catalog/avatars") },
+  { label: "Props", href: localizedPath(locale, "/catalog/props") },
+  { label: "Prefabs", href: localizedPath(locale, "/catalog/prefabs") },
+];
+---
+
+<div class="feed-shell">
+  <section class="feed-section feed-section--first" aria-labelledby="featured-title">
+    <div class="feed-section__head">
+      <div>
+        <h1 id="featured-title">{t.featured}</h1>
+        <p>{t.featuredHint}</p>
+      </div>
+      <a class="feed-section__link" href={localizedPath(locale, "/catalog")}>{t.exploreAll} →</a>
+    </div>
+    {
+      popularLoadFailed && (
+        <p class="feed-notice">{t.unavailable}</p>
+      )
+    }
+    <div class="asset-masonry asset-masonry--featured">
+      {
+        featured.map((asset, index) => (
+          <AssetCard
+            item={"id" in asset ? asset : undefined}
+            placeholder={"id" in asset ? undefined : asset}
+            publicAPIBaseURL={publicAPIBaseURL}
+            priority={index < 6}
+          />
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="feed-section" aria-labelledby="categories-title">
+    <div class="feed-section__head">
+      <h2 id="categories-title">{t.categories}</h2>
+    </div>
+    <nav class="category-tabs" aria-label={t.categories}>
+      {categories.map((category) => <a href={category.href}>{category.label}</a>)}
+    </nav>
+  </section>
+
+  <section class="feed-section" aria-labelledby="latest-title">
+    <div class="feed-section__head">
+      <h2 id="latest-title">{t.latest}</h2>
+    </div>
+    {
+      latest.length ? (
+        <div class="asset-masonry">
+          {latest.map((asset) => (
+            <AssetCard item={asset} publicAPIBaseURL={publicAPIBaseURL} />
+          ))}
+        </div>
+      ) : (
+        <div class="empty-state">
+          <span class="empty-state__badge">.bee</span>
+          <div>
+            <h2>{t.emptyTitle}</h2>
+            <p>{t.emptyCopy}</p>
+          </div>
+        </div>
+      )
+    }
+  </section>
+
+  <section class="feed-cta" aria-labelledby="feed-cta-title">
+    <div>
+      <h2 id="feed-cta-title">{t.ctaTitle}</h2>
+      <p>{t.ctaCopy}</p>
+    </div>
+    <a
+      class="button button--primary"
+      href={localizedPath(locale, "/login")}
+      data-auth-cta-upload
+      data-login-href={localizedPath(locale, "/login")}
+      data-upload-href={localizedPath(locale, "/upload")}
+    >
+      {t.ctaButton}
+    </a>
+  </section>
+</div>

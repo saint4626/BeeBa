@@ -1,0 +1,47 @@
+status.beeba.org {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "base-uri 'self'; object-src 'none'; frame-ancestors 'none'"
+	}
+
+	reverse_proxy kener:3000
+}
+
+beeba.org {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "base-uri 'self'; object-src 'none'; frame-ancestors 'none'"
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /healthz {
+		reverse_proxy backend:8080
+	}
+
+	handle /readyz {
+		reverse_proxy backend:8080
+	}
+
+	handle /openapi.yaml {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		reverse_proxy frontend:4321
+	}
+}

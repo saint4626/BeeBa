@@ -1,0 +1,114 @@
+---
+import CatalogView from "../../components/catalog/CatalogView.astro";
+import CatalogHeaderActions from "../../components/catalog/CatalogHeaderActions.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { listCategories, listPublicContent, listTags } from "../../lib/api/content";
+import { PAGE_LIMITS } from "../../lib/config/runtime";
+import type { Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
+
+const categoryLabels: Record<Category["slug"], string> = {
+  worlds: "Worlds",
+  avatars: "Avatars",
+  props: "Props",
+  prefabs: "Prefabs",
+};
+
+const { category } = Astro.params;
+const activeCategory = category as Category["slug"];
+const label = categoryLabels[activeCategory];
+if (!label) {
+  Astro.response.status = 404;
+}
+const searchParams = Astro.url.searchParams;
+const query = searchParams.get("q")?.trim() ?? "";
+const activeTags = parseTags(searchParams.get("tags"));
+const sort = normalizeSort(searchParams.get("sort"));
+const includeNSFW = searchParams.get("include_nsfw") === "true";
+const cursor = searchParams.get("cursor")?.trim() ?? "";
+
+let categories = [
+  { slug: "worlds", name: "Worlds" },
+  { slug: "avatars", name: "Avatars" },
+  { slug: "props", name: "Props" },
+  { slug: "prefabs", name: "Prefabs" },
+];
+let tags = [];
+let items: PublicContentItem[] = [];
+let pagination: CursorPagination | undefined;
+let error: string | undefined;
+
+try {
+  if (label) {
+    const [categoryData, tagData, contentData] = await Promise.all([
+      listCategories(),
+      listTags(),
+      listPublicContent({
+        category: activeCategory,
+        q: query,
+        tags: activeTags,
+        sort: sort === "likes" || sort === "downloads" ? sort : "newest",
+        include_nsfw: includeNSFW,
+        cursor,
+        limit: PAGE_LIMITS.catalog,
+      }),
+    ]);
+    categories = categoryData;
+    tags = tagData;
+    items = contentData.data;
+    pagination = contentData.pagination;
+  }
+} catch (caught) {
+  error = caught instanceof Error ? caught.message : "Failed to load category data.";
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  return Array.from(new Set(raw.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
+}
+
+function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
+  return raw === "likes" || raw === "downloads" ? raw : "newest";
+}
+---
+
+<BaseLayout
+  title={`${label ?? "Not found"} - BeeBa Catalog`}
+  description={label ? `Browse published Basis / VR ${label.toLowerCase()} after scan and moderation approval.` : "Catalog category not found."}
+  canonicalPath={`/catalog/${category}`}
+>
+  {label && (
+    <CatalogHeaderActions
+      slot="header-actions"
+      tags={tags}
+      query={query}
+      activeTags={activeTags}
+      sort={sort}
+      includeNSFW={includeNSFW}
+      activeCategory={activeCategory}
+    />
+  )}
+  {label ? (
+    <CatalogView
+      items={items}
+      pagination={pagination}
+      categories={categories}
+      tags={tags}
+      query={query}
+      activeTags={activeTags}
+      sort={sort}
+      includeNSFW={includeNSFW}
+      activeCategory={activeCategory}
+      error={error}
+    />
+  ) : (
+    <div class="page-container">
+      <div class="empty-state">
+        <span class="empty-state__badge">404</span>
+        <div>
+          <h1>Catalog category not found.</h1>
+          <p>Use Worlds, Avatars, Props, or Prefabs.</p>
+        </div>
+      </div>
+    </div>
+  )}
+</BaseLayout>

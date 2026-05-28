@@ -1,0 +1,11 @@
+---
+import HomePage from "../components/home/HomePage.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { ui } from "../lib/i18n";
+
+const locale = "en";
+---
+
+<BaseLayout title={ui[locale].home.title} description={ui[locale].home.description} canonicalPath="/" mainClass="main--flush-end">
+  <HomePage locale={locale} />
+</BaseLayout>

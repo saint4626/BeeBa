@@ -1,0 +1,104 @@
+---
+import type { CatalogTag, Category } from "../../lib/api/types";
+
+interface Props {
+  tags: CatalogTag[];
+  query: string;
+  activeTags: string[];
+  sort: "newest" | "likes" | "downloads";
+  includeNSFW: boolean;
+  activeCategory?: Category["slug"];
+  baseCatalogPath?: string;
+}
+
+const {
+  tags,
+  query,
+  activeTags,
+  sort,
+  includeNSFW,
+  activeCategory,
+  baseCatalogPath = "/catalog",
+} = Astro.props;
+
+const normalizedTags = new Set(activeTags);
+const activeSortLabel = sort === "likes" ? "Likes" : sort === "downloads" ? "Downloads" : "Newest";
+
+const iconPaths = {
+  sort: "M11 5h10M11 12h7M11 19h4M4 19V5m0 14-3-3m3 3 3-3",
+  filter: "M22 3H2l8 9.5V20l4 2v-9.5Z",
+};
+
+function currentHref(overrides: Record<string, string>) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (activeTags.length) params.set("tags", activeTags.join(","));
+  if (sort !== "newest") params.set("sort", sort);
+  if (includeNSFW) params.set("include_nsfw", "true");
+  Object.entries(overrides).forEach(([key, value]) => {
+    if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+  });
+  const base = activeCategory ? `${baseCatalogPath}/${activeCategory}` : baseCatalogPath;
+  const suffix = params.toString();
+  return `${base}${suffix ? `?${suffix}` : ""}`;
+}
+
+function sortHref(nextSort: "newest" | "likes" | "downloads") {
+  return currentHref({ sort: nextSort === "newest" ? "" : nextSort });
+}
+
+function tagHref(slug: string) {
+  const selected = new Set(activeTags);
+  if (selected.has(slug)) {
+    selected.delete(slug);
+  } else {
+    selected.add(slug);
+  }
+  return currentHref({ tags: Array.from(selected).join(",") });
+}
+
+function nsfwHref() {
+  return currentHref({ include_nsfw: includeNSFW ? "" : "true" });
+}
+---
+
+<div class="catalog-actions">
+  <details class="catalog-menu" data-ui-dropdown>
+    <summary aria-label="Sort catalog">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d={iconPaths.sort}></path></svg>
+      <span>{activeSortLabel}</span>
+    </summary>
+    <div class="catalog-menu__content">
+      <a class:list={[sort === "newest" && "active"]} href={sortHref("newest")}>Newest</a>
+      <a class:list={[sort === "likes" && "active"]} href={sortHref("likes")}>Likes</a>
+      <a class:list={[sort === "downloads" && "active"]} href={sortHref("downloads")}>Downloads</a>
+    </div>
+  </details>
+  <details class="catalog-menu catalog-menu--filter" data-ui-dropdown>
+    <summary aria-label="Filter catalog">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d={iconPaths.filter}></path></svg>
+      <span>Filters</span>
+    </summary>
+    <div class="catalog-menu__content">
+      <a class:list={["catalog-filter-toggle", includeNSFW && "active"]} href={nsfwHref()}>
+        <span>NSFW</span>
+        <span>{includeNSFW ? "On" : "Off"}</span>
+      </a>
+      {tags.length > 0 && (
+        <>
+          <span class="catalog-menu__label">Tags</span>
+          {tags.map((tag) => (
+            <a class:list={[normalizedTags.has(tag.slug) && "active"]} href={tagHref(tag.slug)}>
+              <span>{tag.name}</span>
+              <small>{tag.published_count}</small>
+            </a>
+          ))}
+        </>
+      )}
+    </div>
+  </details>
+</div>

@@ -1,0 +1,340 @@
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    depends_on:
+      - backend
+      - frontend
+      - kener
+    ports:
+      - "8088:8088"
+      - "8089:8089"
+    volumes:
+      - ./infra/caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+  kener:
+    image: ${KENER_IMAGE:-rajnandan1/kener:latest}
+    environment:
+      KENER_SECRET_KEY: ${KENER_SECRET_KEY:-beeba_dev_kener_secret_change_me}
+      ORIGIN: ${KENER_ORIGIN:-http://127.0.0.1:8089}
+      REDIS_URL: redis://kener_redis:6379
+    volumes:
+      - kener_data:/app/database
+      - kener_uploads:/app/uploads
+      - ./infra/kener/seedSiteData.ts:/app/src/lib/server/db/seedSiteData.ts:ro
+      - ./infra/kener/seedMonitorData.ts:/app/src/lib/server/db/seedMonitorData.ts:ro
+      - ./infra/kener/seedPagesData.ts:/app/src/lib/server/db/seedPagesData.ts:ro
+      - ./infra/kener/pages.seed.ts:/app/seeds/pages.ts:ro
+    depends_on:
+      kener_redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kener_redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - kener_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    image: node:22.12-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      API_BASE_URL: http://backend:8080/api/v1
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-/api/v1}
+      PUBLIC_STATUS_URL: ${PUBLIC_STATUS_URL:-http://127.0.0.1:8089}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://127.0.0.1:8088}
+      PUBLIC_MAX_IMAGE_UPLOAD_BYTES: ${PUBLIC_MAX_IMAGE_UPLOAD_BYTES:-8388608}
+      PUBLIC_CATALOG_PAGE_LIMIT: ${PUBLIC_CATALOG_PAGE_LIMIT:-24}
+      PUBLIC_HOME_SOURCE_LIMIT: ${PUBLIC_HOME_SOURCE_LIMIT:-10}
+      PUBLIC_HOME_NEWEST_LIMIT: ${PUBLIC_HOME_NEWEST_LIMIT:-8}
+      PUBLIC_HOME_FEATURED_LIMIT: ${PUBLIC_HOME_FEATURED_LIMIT:-12}
+      PUBLIC_PROFILE_ASSETS_LIMIT: ${PUBLIC_PROFILE_ASSETS_LIMIT:-12}
+      PUBLIC_OWNER_CONTENT_LIMIT: ${PUBLIC_OWNER_CONTENT_LIMIT:-12}
+      PUBLIC_SOCIAL_COMMENT_LIMIT: ${PUBLIC_SOCIAL_COMMENT_LIMIT:-24}
+      PUBLIC_ADMIN_PAGE_LIMIT: ${PUBLIC_ADMIN_PAGE_LIMIT:-50}
+      PUBLIC_ADMIN_POLL_INTERVAL_MS: ${PUBLIC_ADMIN_POLL_INTERVAL_MS:-15000}
+    ports:
+      - "4321:4321"
+    volumes:
+      - ./Frontend:/app
+      - frontend_node_modules:/app/node_modules
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+      clamav:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      BEEBA_ENV: ${BEEBA_ENV:-development}
+      BEEBA_SERVICE_NAME: ${BEEBA_SERVICE_NAME:-beeba-api}
+      BEEBA_HTTP_ADDR: ${BEEBA_HTTP_ADDR:-:8080}
+      BEEBA_PUBLIC_BASE_URL: ${BEEBA_PUBLIC_BASE_URL:-http://localhost:4321}
+      BEEBA_CORS_ALLOWED_ORIGINS: ${BEEBA_CORS_ALLOWED_ORIGINS:-http://localhost:4321,http://127.0.0.1:4321,http://localhost:8088}
+      BEEBA_DATABASE_URL: ${BEEBA_DATABASE_URL:-postgres://beeba:beeba_dev_password@postgres:5432/beeba?sslmode=disable}
+      BEEBA_REDIS_URL: ${BEEBA_REDIS_URL:-redis://redis:6379/0}
+      BEEBA_MEILISEARCH_URL: ${BEEBA_MEILISEARCH_URL:-http://meilisearch:7700}
+      BEEBA_MEILISEARCH_API_KEY: ${BEEBA_MEILISEARCH_API_KEY:-dev_meili_master_key_change_me}
+      BEEBA_MEILISEARCH_CONTENT_INDEX: ${BEEBA_MEILISEARCH_CONTENT_INDEX:-beeba_content}
+      BEEBA_CLAMAV_ADDR: ${BEEBA_CLAMAV_ADDR:-clamav:3310}
+      BEEBA_CLAMAV_REQUIRED: ${BEEBA_CLAMAV_REQUIRED:-false}
+      BEEBA_CLAMAV_TIMEOUT: ${BEEBA_CLAMAV_TIMEOUT:-20m}
+      BEEBA_MINIO_ENDPOINT: ${BEEBA_MINIO_ENDPOINT:-minio:9000}
+      BEEBA_MINIO_ACCESS_KEY: ${BEEBA_MINIO_ACCESS_KEY:-beeba_dev_access}
+      BEEBA_MINIO_SECRET_KEY: ${BEEBA_MINIO_SECRET_KEY:-beeba_dev_secret_change_me}
+      BEEBA_MINIO_USE_SSL: ${BEEBA_MINIO_USE_SSL:-false}
+      BEEBA_MINIO_QUARANTINE_BUCKET: ${BEEBA_MINIO_QUARANTINE_BUCKET:-beeba-content-quarantine}
+      BEEBA_MINIO_PRIVATE_BUCKET: ${BEEBA_MINIO_PRIVATE_BUCKET:-beeba-content-private}
+      BEEBA_MINIO_PUBLIC_BUCKET: ${BEEBA_MINIO_PUBLIC_BUCKET:-beeba-content-public}
+      BEEBA_MINIO_PREVIEW_BUCKET: ${BEEBA_MINIO_PREVIEW_BUCKET:-beeba-content-previews}
+      BEEBA_MINIO_BACKUP_BUCKET: ${BEEBA_MINIO_BACKUP_BUCKET:-beeba-content-backups}
+      BEEBA_SECRET_BOX_KEY: ${BEEBA_SECRET_BOX_KEY:-zcSZAHVJniJYGFVutzyqiz8hAWYhoxB83+gy9lJpabM=}
+      BEEBA_MAX_UPLOAD_BYTES: ${BEEBA_MAX_UPLOAD_BYTES:-2147483648}
+      BEEBA_MAX_IMAGE_UPLOAD_BYTES: ${BEEBA_MAX_IMAGE_UPLOAD_BYTES:-8388608}
+      BEEBA_REQUEST_BODY_LIMIT: ${BEEBA_REQUEST_BODY_LIMIT:-2148532224}
+      BEEBA_READINESS_TIMEOUT: ${BEEBA_READINESS_TIMEOUT:-2s}
+      BEEBA_SHUTDOWN_TIMEOUT: ${BEEBA_SHUTDOWN_TIMEOUT:-10s}
+      BEEBA_UPLOAD_STORAGE_TIMEOUT: ${BEEBA_UPLOAD_STORAGE_TIMEOUT:-20m}
+      BEEBA_HTTP_READ_TIMEOUT: ${BEEBA_HTTP_READ_TIMEOUT:-30s}
+      BEEBA_HTTP_WRITE_TIMEOUT: ${BEEBA_HTTP_WRITE_TIMEOUT:-2m}
+      BEEBA_HTTP_IDLE_TIMEOUT: ${BEEBA_HTTP_IDLE_TIMEOUT:-2m}
+      BEEBA_TRUST_PROXY: ${BEEBA_TRUST_PROXY:-false}
+      BEEBA_TRUST_PROXY_PROXIES: ${BEEBA_TRUST_PROXY_PROXIES:-}
+      BEEBA_TRUST_PROXY_PRIVATE: ${BEEBA_TRUST_PROXY_PRIVATE:-false}
+      BEEBA_TRUST_PROXY_LOOPBACK: ${BEEBA_TRUST_PROXY_LOOPBACK:-false}
+      BEEBA_PROXY_HEADER: ${BEEBA_PROXY_HEADER:-X-Forwarded-For}
+      BEEBA_RATE_LIMIT_SEARCH_LIMIT: ${BEEBA_RATE_LIMIT_SEARCH_LIMIT:-120}
+      BEEBA_RATE_LIMIT_SEARCH_WINDOW: ${BEEBA_RATE_LIMIT_SEARCH_WINDOW:-1m}
+      BEEBA_RATE_LIMIT_DOWNLOAD_PUBLIC_LIMIT: ${BEEBA_RATE_LIMIT_DOWNLOAD_PUBLIC_LIMIT:-60}
+      BEEBA_RATE_LIMIT_DOWNLOAD_PUBLIC_WINDOW: ${BEEBA_RATE_LIMIT_DOWNLOAD_PUBLIC_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_DOWNLOAD_OWNER_LIMIT: ${BEEBA_RATE_LIMIT_DOWNLOAD_OWNER_LIMIT:-120}
+      BEEBA_RATE_LIMIT_DOWNLOAD_OWNER_WINDOW: ${BEEBA_RATE_LIMIT_DOWNLOAD_OWNER_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_UPLOAD_CONTENT_LIMIT: ${BEEBA_RATE_LIMIT_UPLOAD_CONTENT_LIMIT:-30}
+      BEEBA_RATE_LIMIT_UPLOAD_CONTENT_WINDOW: ${BEEBA_RATE_LIMIT_UPLOAD_CONTENT_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_UPLOAD_AVATAR_LIMIT: ${BEEBA_RATE_LIMIT_UPLOAD_AVATAR_LIMIT:-20}
+      BEEBA_RATE_LIMIT_UPLOAD_AVATAR_WINDOW: ${BEEBA_RATE_LIMIT_UPLOAD_AVATAR_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_UPLOAD_CONTENT_IMAGE_LIMIT: ${BEEBA_RATE_LIMIT_UPLOAD_CONTENT_IMAGE_LIMIT:-40}
+      BEEBA_RATE_LIMIT_UPLOAD_CONTENT_IMAGE_WINDOW: ${BEEBA_RATE_LIMIT_UPLOAD_CONTENT_IMAGE_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_AUTH_REGISTER_LIMIT: ${BEEBA_RATE_LIMIT_AUTH_REGISTER_LIMIT:-10}
+      BEEBA_RATE_LIMIT_AUTH_REGISTER_WINDOW: ${BEEBA_RATE_LIMIT_AUTH_REGISTER_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_AUTH_LOGIN_LIMIT: ${BEEBA_RATE_LIMIT_AUTH_LOGIN_LIMIT:-20}
+      BEEBA_RATE_LIMIT_AUTH_LOGIN_WINDOW: ${BEEBA_RATE_LIMIT_AUTH_LOGIN_WINDOW:-15m}
+      BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY_LIMIT: ${BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY_LIMIT:-30}
+      BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY_WINDOW: ${BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_AUTH_REFRESH_LIMIT: ${BEEBA_RATE_LIMIT_AUTH_REFRESH_LIMIT:-120}
+      BEEBA_RATE_LIMIT_AUTH_REFRESH_WINDOW: ${BEEBA_RATE_LIMIT_AUTH_REFRESH_WINDOW:-15m}
+      BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND_LIMIT: ${BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND_LIMIT:-5}
+      BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND_WINDOW: ${BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_SOCIAL_COMMENTS_LIMIT: ${BEEBA_RATE_LIMIT_SOCIAL_COMMENTS_LIMIT:-10}
+      BEEBA_RATE_LIMIT_SOCIAL_COMMENTS_WINDOW: ${BEEBA_RATE_LIMIT_SOCIAL_COMMENTS_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_SOCIAL_LIKES_LIMIT: ${BEEBA_RATE_LIMIT_SOCIAL_LIKES_LIMIT:-60}
+      BEEBA_RATE_LIMIT_SOCIAL_LIKES_WINDOW: ${BEEBA_RATE_LIMIT_SOCIAL_LIKES_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_SOCIAL_REPORTS_LIMIT: ${BEEBA_RATE_LIMIT_SOCIAL_REPORTS_LIMIT:-5}
+      BEEBA_RATE_LIMIT_SOCIAL_REPORTS_WINDOW: ${BEEBA_RATE_LIMIT_SOCIAL_REPORTS_WINDOW:-1h}
+      BEEBA_RATE_LIMIT_ADMIN_ACTION_LIMIT: ${BEEBA_RATE_LIMIT_ADMIN_ACTION_LIMIT:-240}
+      BEEBA_RATE_LIMIT_ADMIN_ACTION_WINDOW: ${BEEBA_RATE_LIMIT_ADMIN_ACTION_WINDOW:-1h}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BEEBA_ENV: ${BEEBA_ENV:-development}
+      BEEBA_SERVICE_NAME: beeba-migrate
+      BEEBA_HTTP_ADDR: ${BEEBA_HTTP_ADDR:-:8080}
+      BEEBA_PUBLIC_BASE_URL: ${BEEBA_PUBLIC_BASE_URL:-http://localhost:4321}
+      BEEBA_CORS_ALLOWED_ORIGINS: ${BEEBA_CORS_ALLOWED_ORIGINS:-http://localhost:4321,http://127.0.0.1:4321,http://localhost:8088}
+      BEEBA_DATABASE_URL: ${BEEBA_DATABASE_URL:-postgres://beeba:beeba_dev_password@postgres:5432/beeba?sslmode=disable}
+      BEEBA_REDIS_URL: ${BEEBA_REDIS_URL:-redis://redis:6379/0}
+      BEEBA_MEILISEARCH_URL: ${BEEBA_MEILISEARCH_URL:-http://meilisearch:7700}
+      BEEBA_MEILISEARCH_API_KEY: ${BEEBA_MEILISEARCH_API_KEY:-dev_meili_master_key_change_me}
+      BEEBA_MEILISEARCH_CONTENT_INDEX: ${BEEBA_MEILISEARCH_CONTENT_INDEX:-beeba_content}
+      BEEBA_CLAMAV_ADDR: ${BEEBA_CLAMAV_ADDR:-clamav:3310}
+      BEEBA_CLAMAV_REQUIRED: ${BEEBA_CLAMAV_REQUIRED:-false}
+      BEEBA_CLAMAV_TIMEOUT: ${BEEBA_CLAMAV_TIMEOUT:-20m}
+      BEEBA_MINIO_ENDPOINT: ${BEEBA_MINIO_ENDPOINT:-minio:9000}
+      BEEBA_MINIO_ACCESS_KEY: ${BEEBA_MINIO_ACCESS_KEY:-beeba_dev_access}
+      BEEBA_MINIO_SECRET_KEY: ${BEEBA_MINIO_SECRET_KEY:-beeba_dev_secret_change_me}
+      BEEBA_MINIO_USE_SSL: ${BEEBA_MINIO_USE_SSL:-false}
+      BEEBA_MINIO_QUARANTINE_BUCKET: ${BEEBA_MINIO_QUARANTINE_BUCKET:-beeba-content-quarantine}
+      BEEBA_MINIO_PRIVATE_BUCKET: ${BEEBA_MINIO_PRIVATE_BUCKET:-beeba-content-private}
+      BEEBA_MINIO_PUBLIC_BUCKET: ${BEEBA_MINIO_PUBLIC_BUCKET:-beeba-content-public}
+      BEEBA_MINIO_PREVIEW_BUCKET: ${BEEBA_MINIO_PREVIEW_BUCKET:-beeba-content-previews}
+      BEEBA_MINIO_BACKUP_BUCKET: ${BEEBA_MINIO_BACKUP_BUCKET:-beeba-content-backups}
+      BEEBA_SECRET_BOX_KEY: ${BEEBA_SECRET_BOX_KEY:-zcSZAHVJniJYGFVutzyqiz8hAWYhoxB83+gy9lJpabM=}
+      BEEBA_MAX_UPLOAD_BYTES: ${BEEBA_MAX_UPLOAD_BYTES:-2147483648}
+      BEEBA_MAX_IMAGE_UPLOAD_BYTES: ${BEEBA_MAX_IMAGE_UPLOAD_BYTES:-8388608}
+      BEEBA_REQUEST_BODY_LIMIT: ${BEEBA_REQUEST_BODY_LIMIT:-2148532224}
+      BEEBA_READINESS_TIMEOUT: ${BEEBA_READINESS_TIMEOUT:-2s}
+      BEEBA_SHUTDOWN_TIMEOUT: ${BEEBA_SHUTDOWN_TIMEOUT:-10s}
+      BEEBA_UPLOAD_STORAGE_TIMEOUT: ${BEEBA_UPLOAD_STORAGE_TIMEOUT:-20m}
+      BEEBA_HTTP_READ_TIMEOUT: ${BEEBA_HTTP_READ_TIMEOUT:-30s}
+      BEEBA_HTTP_WRITE_TIMEOUT: ${BEEBA_HTTP_WRITE_TIMEOUT:-2m}
+      BEEBA_HTTP_IDLE_TIMEOUT: ${BEEBA_HTTP_IDLE_TIMEOUT:-2m}
+      BEEBA_TRUST_PROXY: ${BEEBA_TRUST_PROXY:-false}
+      BEEBA_TRUST_PROXY_PROXIES: ${BEEBA_TRUST_PROXY_PROXIES:-}
+      BEEBA_TRUST_PROXY_PRIVATE: ${BEEBA_TRUST_PROXY_PRIVATE:-false}
+      BEEBA_TRUST_PROXY_LOOPBACK: ${BEEBA_TRUST_PROXY_LOOPBACK:-false}
+      BEEBA_PROXY_HEADER: ${BEEBA_PROXY_HEADER:-X-Forwarded-For}
+      BEEBA_MIGRATIONS_DIR: /app/migrations
+    entrypoint: ["/app/beeba-migrate"]
+    restart: "no"
+
+  worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      BEEBA_ENV: ${BEEBA_ENV:-development}
+      BEEBA_SERVICE_NAME: beeba-worker
+      BEEBA_HTTP_ADDR: ${BEEBA_HTTP_ADDR:-:8080}
+      BEEBA_PUBLIC_BASE_URL: ${BEEBA_PUBLIC_BASE_URL:-http://localhost:4321}
+      BEEBA_CORS_ALLOWED_ORIGINS: ${BEEBA_CORS_ALLOWED_ORIGINS:-http://localhost:4321,http://127.0.0.1:4321,http://localhost:8088}
+      BEEBA_DATABASE_URL: ${BEEBA_DATABASE_URL:-postgres://beeba:beeba_dev_password@postgres:5432/beeba?sslmode=disable}
+      BEEBA_REDIS_URL: ${BEEBA_REDIS_URL:-redis://redis:6379/0}
+      BEEBA_MEILISEARCH_URL: ${BEEBA_MEILISEARCH_URL:-http://meilisearch:7700}
+      BEEBA_MEILISEARCH_API_KEY: ${BEEBA_MEILISEARCH_API_KEY:-dev_meili_master_key_change_me}
+      BEEBA_MEILISEARCH_CONTENT_INDEX: ${BEEBA_MEILISEARCH_CONTENT_INDEX:-beeba_content}
+      BEEBA_CLAMAV_ADDR: ${BEEBA_CLAMAV_ADDR:-clamav:3310}
+      BEEBA_CLAMAV_REQUIRED: ${BEEBA_CLAMAV_REQUIRED:-false}
+      BEEBA_CLAMAV_TIMEOUT: ${BEEBA_CLAMAV_TIMEOUT:-20m}
+      BEEBA_MINIO_ENDPOINT: ${BEEBA_MINIO_ENDPOINT:-minio:9000}
+      BEEBA_MINIO_ACCESS_KEY: ${BEEBA_MINIO_ACCESS_KEY:-beeba_dev_access}
+      BEEBA_MINIO_SECRET_KEY: ${BEEBA_MINIO_SECRET_KEY:-beeba_dev_secret_change_me}
+      BEEBA_MINIO_USE_SSL: ${BEEBA_MINIO_USE_SSL:-false}
+      BEEBA_MINIO_QUARANTINE_BUCKET: ${BEEBA_MINIO_QUARANTINE_BUCKET:-beeba-content-quarantine}
+      BEEBA_MINIO_PRIVATE_BUCKET: ${BEEBA_MINIO_PRIVATE_BUCKET:-beeba-content-private}
+      BEEBA_MINIO_PUBLIC_BUCKET: ${BEEBA_MINIO_PUBLIC_BUCKET:-beeba-content-public}
+      BEEBA_MINIO_PREVIEW_BUCKET: ${BEEBA_MINIO_PREVIEW_BUCKET:-beeba-content-previews}
+      BEEBA_MINIO_BACKUP_BUCKET: ${BEEBA_MINIO_BACKUP_BUCKET:-beeba-content-backups}
+      BEEBA_SECRET_BOX_KEY: ${BEEBA_SECRET_BOX_KEY:-zcSZAHVJniJYGFVutzyqiz8hAWYhoxB83+gy9lJpabM=}
+      BEEBA_MAX_UPLOAD_BYTES: ${BEEBA_MAX_UPLOAD_BYTES:-2147483648}
+      BEEBA_MAX_IMAGE_UPLOAD_BYTES: ${BEEBA_MAX_IMAGE_UPLOAD_BYTES:-8388608}
+      BEEBA_REQUEST_BODY_LIMIT: ${BEEBA_REQUEST_BODY_LIMIT:-2148532224}
+      BEEBA_READINESS_TIMEOUT: ${BEEBA_READINESS_TIMEOUT:-2s}
+      BEEBA_SHUTDOWN_TIMEOUT: ${BEEBA_SHUTDOWN_TIMEOUT:-10s}
+      BEEBA_UPLOAD_STORAGE_TIMEOUT: ${BEEBA_UPLOAD_STORAGE_TIMEOUT:-20m}
+      BEEBA_HTTP_READ_TIMEOUT: ${BEEBA_HTTP_READ_TIMEOUT:-30s}
+      BEEBA_HTTP_WRITE_TIMEOUT: ${BEEBA_HTTP_WRITE_TIMEOUT:-2m}
+      BEEBA_HTTP_IDLE_TIMEOUT: ${BEEBA_HTTP_IDLE_TIMEOUT:-2m}
+      BEEBA_TRUST_PROXY: ${BEEBA_TRUST_PROXY:-false}
+      BEEBA_TRUST_PROXY_PROXIES: ${BEEBA_TRUST_PROXY_PROXIES:-}
+      BEEBA_TRUST_PROXY_PRIVATE: ${BEEBA_TRUST_PROXY_PRIVATE:-false}
+      BEEBA_TRUST_PROXY_LOOPBACK: ${BEEBA_TRUST_PROXY_LOOPBACK:-false}
+      BEEBA_PROXY_HEADER: ${BEEBA_PROXY_HEADER:-X-Forwarded-For}
+    entrypoint: ["/app/beeba-worker"]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-beeba}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beeba_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-beeba}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.28
+    environment:
+      MEILI_ENV: development
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-dev_meili_master_key_change_me}
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili_data:/meili_data
+    restart: unless-stopped
+
+  clamav:
+    image: ${CLAMAV_IMAGE:-clamav/clamav:stable}
+    ports:
+      - "3310:3310"
+    volumes:
+      - ./infra/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | nc -w 3 127.0.0.1 3310 | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 3m
+    restart: unless-stopped
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-beeba_dev_access}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-beeba_dev_secret_change_me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  frontend_node_modules:
+  postgres_data:
+  redis_data:
+  kener_data:
+  kener_uploads:
+  kener_redis_data:
+  meili_data:
+  minio_data:
+  clamav_data:
