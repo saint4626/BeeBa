@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getCurrentUser, login, register } from "../../lib/api/auth";
 import { clearAuthSession, publishAuthSession, readAuthSession } from "../../lib/auth/session";
+import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
@@ -79,7 +80,7 @@ onMounted(async () => {
   try {
     await getCurrentUser();
     isAlreadySignedIn.value = true;
-    window.location.replace(props.redirectHref);
+    navigateWithPageProgress(props.redirectHref, "replace");
     return;
   } catch {
     if (readAuthSession()) {
@@ -109,7 +110,7 @@ async function submitAuth() {
     isAlreadySignedIn.value = true;
     notice.value = copy.value.loginOk;
     showToast(notice.value, { kind: "success" });
-    window.location.assign(props.redirectHref);
+    navigateWithPageProgress(props.redirectHref);
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : copy.value.failed;
     showToast(error.value, { kind: "error" });

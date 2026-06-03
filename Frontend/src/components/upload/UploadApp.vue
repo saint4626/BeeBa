@@ -71,13 +71,11 @@ const category = ref("worlds");
 const categoryDropdown = ref<HTMLDetailsElement | null>(null);
 const title = ref("");
 const description = ref("");
-const version = ref("");
 const visibility = ref<"public" | "private">("public");
 const unlockPassword = ref("");
 const nsfw = ref(false);
 const selectedFile = ref<File | null>(null);
 const previewFile = ref<File | null>(null);
-const previewAltText = ref("");
 const lastUpload = ref<ContentUploadCreated | null>(null);
 const uploadLoading = ref(false);
 const uploadProgress = ref(0);
@@ -142,7 +140,6 @@ async function submitUpload() {
       category: category.value,
       title: title.value.trim(),
       description: description.value.trim(),
-      version: version.value.trim(),
       visibility: visibility.value,
       unlockPassword: unlockPassword.value,
       nsfw: nsfw.value,
@@ -156,7 +153,6 @@ async function submitUpload() {
 
     if (previewFile.value) {
       await uploadContentImage("", created.content_id, previewFile.value, {
-        altText: previewAltText.value.trim() || title.value.trim(),
         isPrimary: true,
         sortOrder: 0,
       });
@@ -202,12 +198,10 @@ function resetUploadForm() {
   uploadFormElement.value?.reset();
   title.value = "";
   description.value = "";
-  version.value = "";
   unlockPassword.value = "";
   nsfw.value = false;
   selectedFile.value = null;
   previewFile.value = null;
-  previewAltText.value = "";
 }
 
 function formatBytes(value: number) {
@@ -281,14 +275,6 @@ function formatBytes(value: number) {
                 </button>
               </div>
             </details>
-          </label>
-          <label class="field">
-            Version
-            <input v-model="version" type="text" maxlength="80" placeholder="Optional" />
-          </label>
-          <label class="field">
-            Preview alt text
-            <input v-model="previewAltText" type="text" maxlength="500" placeholder="Optional" />
           </label>
         </div>
 

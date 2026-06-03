@@ -76,7 +76,6 @@ CREATE TABLE content_items (
   nsfw boolean NOT NULL DEFAULT false,
   github_url text,
   documentation_url text,
-  version text,
   changelog text,
   likes_count integer NOT NULL DEFAULT 0,
   downloads_count integer NOT NULL DEFAULT 0,

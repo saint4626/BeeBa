@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import AvatarPanel from "./AvatarPanel.vue";
+import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
 const owner = useOwnerStore();
 const displayName = ref("");
-const localError = ref("");
-
-const publicProfileHref = computed(() => owner.user ? `/users/${owner.user.username}` : "/catalog");
 
 watch(
   () => owner.user?.display_name,
@@ -18,11 +16,10 @@ watch(
 );
 
 async function submitProfile() {
-  localError.value = "";
   try {
     await owner.updateAccountProfile(displayName.value);
   } catch (caught) {
-    localError.value = caught instanceof Error ? caught.message : "Profile update failed.";
+    showToast(caught instanceof Error ? caught.message : "Profile update failed.", "error");
   }
 }
 </script>
@@ -34,7 +31,6 @@ async function submitProfile() {
         <p class="eyebrow">Profile details</p>
         <h2 id="account-settings-title">Public identity</h2>
       </div>
-      <a v-if="owner.user" class="button button--secondary" :href="publicProfileHref">Public profile</a>
     </div>
 
     <div class="profile-identity-layout">
@@ -67,7 +63,5 @@ async function submitProfile() {
         </form>
       </div>
     </div>
-
-    <div v-if="localError" class="message message--error">{{ localError }}</div>
   </section>
 </template>

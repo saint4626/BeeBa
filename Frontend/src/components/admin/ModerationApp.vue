@@ -19,6 +19,7 @@ import UserManagementPanel from "./UserManagementPanel.vue";
 import { clearAuthSession } from "../../lib/auth/session";
 import type { ModerationQueueItem } from "../../lib/api/types";
 import { BYTE_UNITS } from "../../lib/config/runtime";
+import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { ADMIN_POLL_INTERVAL_MS, useAdminStore, type AdminTabID } from "../../stores/admin.store";
 
 type IconNode = Array<[string, Record<string, string>]>;
@@ -40,7 +41,6 @@ const {
   contentReason,
   contentQueue,
   contentActionID,
-  lastError,
   isAuthorized,
   canModerate,
   canAdminister,
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
 
 function redirectToLogin() {
   if (typeof window === "undefined") return;
-  window.location.replace(loginHref);
+  navigateWithPageProgress(loginHref, "replace");
 }
 
 watch(visibleTabs, (tabs) => {
@@ -288,8 +288,6 @@ function restoreBlockedReason(item: ModerationQueueItem) {
     <div v-if="ready && !isAuthorized" class="message message--warning">
       Login with a moderator, admin, or owner account to load moderation tools.
     </div>
-    <div v-if="lastError" class="message message--error">{{ lastError }}</div>
-
     <section v-if="isAuthorized" class="admin-workspace" aria-labelledby="admin-workspace-title">
       <div class="admin-workspace__head">
         <div>

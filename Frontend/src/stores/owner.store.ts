@@ -4,7 +4,16 @@ import { changePassword, getCurrentUser, resendEmailVerification, updateProfile 
 import { clearAuthSession, publishSessionUser, readAuthSession } from "../lib/auth/session";
 import { listContentImages, updateContentImage, deleteContentImage, uploadAvatar, uploadContentImage } from "../lib/api/media";
 import { deleteOwnedContent, listOwnedContent, updateOwnedContent } from "../lib/api/uploads";
+import { OWNER_TIMING } from "../lib/config/runtime";
 import type { OwnerContentItem, OwnerContentUpdateInput, PublicUser, UploadedImage } from "../lib/api/types";
+
+interface RefreshOptions {
+  silent?: boolean;
+}
+
+const LIVE_CONTENT_STATUSES = new Set(["draft", "uploaded", "pending_scan", "pending_moderation"]);
+const LIVE_SCAN_STATUSES = new Set(["pending", "running"]);
+const LIVE_IMAGE_STATUSES = new Set(["pending", "running"]);
 
 export const useOwnerStore = defineStore("owner", () => {
   const accessToken = ref("");
@@ -13,8 +22,10 @@ export const useOwnerStore = defineStore("owner", () => {
   const imagesByContent = ref<Record<string, UploadedImage[]>>({});
   const selectedContentID = ref("");
   const loading = ref(false);
+  const syncing = ref(false);
   const error = ref("");
   const notice = ref("");
+  let ownerSyncTimer: ReturnType<typeof window.setTimeout> | undefined;
 
   const isAuthenticated = computed(() => Boolean(user.value));
   const selectedItem = computed(() => items.value.find((item) => item.id === selectedContentID.value) ?? null);
@@ -29,31 +40,40 @@ export const useOwnerStore = defineStore("owner", () => {
     user.value = initialUser;
     publishSessionUser(initialUser);
     queueMicrotask(() => {
-      refreshLibrary().catch(() => undefined);
+      refreshLibrary().finally(startOwnerRealtime).catch(() => undefined);
     });
   }
 
-  async function refreshLibrary() {
+  async function refreshLibrary(options: RefreshOptions = {}) {
     if (!user.value) return;
-    loading.value = true;
-    error.value = "";
+    if (!options.silent) {
+      loading.value = true;
+      error.value = "";
+    }
+    syncing.value = true;
     try {
       items.value = await listOwnedContent(accessToken.value);
-      if (!selectedContentID.value && items.value[0]) {
-        selectedContentID.value = items.value[0].id;
+      if (selectedContentID.value && !items.value.some((item) => item.id === selectedContentID.value)) {
+        selectedContentID.value = "";
       }
       await Promise.allSettled(items.value.map((item) => refreshImages(item.id)));
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : "Failed to load owner content.";
-      throw caught;
+      if (!options.silent) {
+        error.value = caught instanceof Error ? caught.message : "Failed to load owner content.";
+        throw caught;
+      }
     } finally {
-      loading.value = false;
+      syncing.value = false;
+      if (!options.silent) {
+        loading.value = false;
+      }
     }
   }
 
   async function selectContent(contentID: string) {
     selectedContentID.value = contentID;
     await refreshImages(contentID);
+    kickOwnerRealtime();
   }
 
   async function updateSelectedMetadata(input: OwnerContentUpdateInput) {
@@ -67,6 +87,7 @@ export const useOwnerStore = defineStore("owner", () => {
       notice.value = updated.status === "pending_moderation"
         ? "Content updated and returned to moderation."
         : "Content metadata updated.";
+      kickOwnerRealtime();
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : "Failed to update content metadata.";
       throw caught;
@@ -85,9 +106,10 @@ export const useOwnerStore = defineStore("owner", () => {
       const { [contentID]: _deletedImages, ...remainingImages } = imagesByContent.value;
       imagesByContent.value = remainingImages;
       if (selectedContentID.value === contentID) {
-        selectedContentID.value = items.value[0]?.id ?? "";
+        selectedContentID.value = "";
       }
       notice.value = "Content deleted.";
+      kickOwnerRealtime();
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : "Failed to delete content.";
       throw caught;
@@ -97,11 +119,13 @@ export const useOwnerStore = defineStore("owner", () => {
   }
 
   async function refreshImages(contentID = selectedContentID.value) {
-    if (!user.value || !contentID) return;
+    if (!user.value || !contentID) return undefined;
+    const images = await listContentImages(accessToken.value, contentID);
     imagesByContent.value = {
       ...imagesByContent.value,
-      [contentID]: await listContentImages(accessToken.value, contentID),
+      [contentID]: images,
     };
+    return images;
   }
 
   async function setAvatar(file: File) {
@@ -183,36 +207,47 @@ export const useOwnerStore = defineStore("owner", () => {
     notice.value = "Avatar uploaded. It will appear after processing finishes.";
   }
 
-  async function addContentImage(file: File, altText: string, isPrimary: boolean) {
-    if (!user.value || !selectedContentID.value) return;
-    await uploadContentImage(accessToken.value, selectedContentID.value, file, {
+  async function addContentImage(file: File, altText: string, isPrimary: boolean, options: { silent?: boolean } = {}) {
+    if (!user.value || !selectedContentID.value) return undefined;
+    const image = await uploadContentImage(accessToken.value, selectedContentID.value, file, {
       altText,
       isPrimary,
       sortOrder: selectedImages.value.length,
     });
-    notice.value = "Image queued for processing.";
+    if (!options.silent) {
+      notice.value = "Image queued for processing.";
+    }
     await refreshImages();
+    kickOwnerRealtime(OWNER_TIMING.processingSyncIntervalMs);
+    return image;
   }
 
   async function makePrimary(imageID: string) {
     if (!user.value || !selectedContentID.value) return;
     await updateContentImage(accessToken.value, selectedContentID.value, imageID, { isPrimary: true });
     await refreshImages();
+    notice.value = "Primary preview updated.";
+    kickOwnerRealtime();
   }
 
   async function updateImageText(imageID: string, altText: string, sortOrder: number) {
     if (!user.value || !selectedContentID.value) return;
     await updateContentImage(accessToken.value, selectedContentID.value, imageID, { altText, sortOrder });
     await refreshImages();
+    notice.value = "Image metadata updated.";
+    kickOwnerRealtime();
   }
 
   async function removeImage(imageID: string) {
     if (!user.value || !selectedContentID.value) return;
     await deleteContentImage(accessToken.value, selectedContentID.value, imageID);
     await refreshImages();
+    notice.value = "Image removed.";
+    kickOwnerRealtime();
   }
 
   function resetSession() {
+    stopOwnerRealtime();
     accessToken.value = "";
     user.value = null;
     items.value = [];
@@ -221,15 +256,72 @@ export const useOwnerStore = defineStore("owner", () => {
     clearAuthSession();
   }
 
+  function startOwnerRealtime() {
+    if (!isBrowser() || !user.value || ownerSyncTimer) return;
+    scheduleOwnerRealtime(ownerSyncDelay());
+  }
+
+  function kickOwnerRealtime(delayMs = 0) {
+    if (!isBrowser() || !user.value) return;
+    stopOwnerRealtime();
+    scheduleOwnerRealtime(delayMs);
+  }
+
+  function scheduleOwnerRealtime(delayMs: number) {
+    ownerSyncTimer = window.setTimeout(runOwnerRealtime, Math.max(0, delayMs));
+  }
+
+  async function runOwnerRealtime() {
+    ownerSyncTimer = undefined;
+    if (!user.value) return;
+
+    try {
+      await refreshLibrary({ silent: true });
+    } finally {
+      if (user.value) {
+        scheduleOwnerRealtime(ownerSyncDelay());
+      }
+    }
+  }
+
+  function stopOwnerRealtime() {
+    if (!ownerSyncTimer) return;
+    window.clearTimeout(ownerSyncTimer);
+    ownerSyncTimer = undefined;
+  }
+
+  function refreshOwnerFromVisibility() {
+    if (document.visibilityState === "visible") {
+      kickOwnerRealtime();
+      return;
+    }
+    stopOwnerRealtime();
+  }
+
+  function ownerSyncDelay() {
+    return hasLiveOwnerWork() ? OWNER_TIMING.processingSyncIntervalMs : OWNER_TIMING.syncIntervalMs;
+  }
+
+  function hasLiveOwnerWork() {
+    return items.value.some((item) =>
+      LIVE_CONTENT_STATUSES.has(item.status) ||
+      LIVE_SCAN_STATUSES.has(item.file?.scan_status ?? ""),
+    ) || Object.values(imagesByContent.value).some((images) =>
+      images.some((image) => LIVE_IMAGE_STATUSES.has(image.processing_status)),
+    );
+  }
+
   if (typeof window !== "undefined") {
     const session = readAuthSession();
     if (session) {
       user.value = session.user;
       queueMicrotask(() => {
-        refreshLibrary().catch(() => undefined);
+        refreshLibrary().finally(startOwnerRealtime).catch(() => undefined);
       });
     }
     window.addEventListener("beeba:session-logout", resetSession);
+    window.addEventListener("pagehide", stopOwnerRealtime);
+    document.addEventListener("visibilitychange", refreshOwnerFromVisibility);
   }
 
   return {
@@ -239,6 +331,7 @@ export const useOwnerStore = defineStore("owner", () => {
     imagesByContent,
     selectedContentID,
     loading,
+    syncing,
     error,
     notice,
     isAuthenticated,
@@ -262,6 +355,10 @@ export const useOwnerStore = defineStore("owner", () => {
     removeImage,
   };
 });
+
+function isBrowser() {
+  return typeof window !== "undefined";
+}
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));

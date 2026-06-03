@@ -1,7 +1,19 @@
 import { gsap } from "gsap";
 import Lenis from "lenis";
 import { logout as logoutSession } from "../lib/api/auth";
+import { getPostLogoutRedirectHref } from "../lib/auth/logout-redirect";
 import { AUTH_USER_KEY, clearAuthSession } from "../lib/auth/session";
+import { PAGE_PROGRESS_TIMING } from "../lib/config/runtime";
+import {
+  navigateWithPageProgress,
+  PAGE_PROGRESS_DONE_EVENT,
+  PAGE_PROGRESS_START_EVENT,
+  requestPageProgressDone,
+  requestPageProgressStart,
+  shouldStartPageProgressForForm,
+  shouldStartPageProgressForLink,
+} from "../lib/ui/page-progress";
+import { shouldInitGlobalSmoothScroll } from "../lib/ui/smooth-scroll";
 import { showToast } from "../lib/ui/toast";
 import type { PublicUser } from "../lib/api/types";
 
@@ -19,20 +31,25 @@ declare global {
 const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const ADMIN_ACCESS_KEY = "beeba.adminAccess";
 let authSSRStateInvalidated = false;
+let isSigningOut = false;
 
 function prepareMotionDocument(doc: Document) {
   doc.documentElement.classList.add("beeba-motion");
 }
 
 function initLenis(): Cleanup {
-  const precisionPath = /^\/(admin|upload|profile)(\/|$)/.test(window.location.pathname.replace(/^\/ru(?=\/|$)/, ""));
   const scrollWrapper = document.querySelector<HTMLElement>("[data-site-scroll]");
   const scrollContent = document.querySelector<HTMLElement>("[data-site-scroll-content]");
 
   window.__beebaLenis?.destroy();
   window.__beebaLenis = undefined;
 
-  if (reduceMotion() || precisionPath || !scrollWrapper || !scrollContent) {
+  if (!shouldInitGlobalSmoothScroll({
+    pathname: window.location.pathname,
+    reduceMotion: reduceMotion(),
+    hasScrollWrapper: Boolean(scrollWrapper),
+    hasScrollContent: Boolean(scrollContent),
+  }) || !scrollWrapper || !scrollContent) {
     return () => {};
   }
 
@@ -148,6 +165,8 @@ function initPageProgress(): Cleanup {
 
   let value = 0;
   let timer: number | undefined;
+  let doneTimer: number | undefined;
+  let watchdogTimer: number | undefined;
 
   const set = (next: number) => {
     value = Math.max(value, Math.min(next, 0.94));
@@ -161,53 +180,63 @@ function initPageProgress(): Cleanup {
     }
   };
 
+  const stopDoneTimer = () => {
+    if (doneTimer) {
+      window.clearTimeout(doneTimer);
+      doneTimer = undefined;
+    }
+  };
+
+  const stopWatchdogTimer = () => {
+    if (watchdogTimer) {
+      window.clearTimeout(watchdogTimer);
+      watchdogTimer = undefined;
+    }
+  };
+
   const start = () => {
     stopTimer();
+    stopDoneTimer();
+    stopWatchdogTimer();
     value = 0.08;
     progress.classList.remove("page-progress--done");
     progress.classList.add("page-progress--active");
     bar.style.transform = "scaleX(0.08)";
-    timer = window.setInterval(() => set(value + (1 - value) * 0.18), 180);
+    timer = window.setInterval(() => set(value + (1 - value) * 0.18), PAGE_PROGRESS_TIMING.tickMs);
+    watchdogTimer = window.setTimeout(() => done(), PAGE_PROGRESS_TIMING.watchdogMs);
   };
 
   const done = () => {
     stopTimer();
+    stopDoneTimer();
+    stopWatchdogTimer();
     progress.classList.add("page-progress--active", "page-progress--done");
     bar.style.transform = "scaleX(1)";
-    window.setTimeout(() => {
+    doneTimer = window.setTimeout(() => {
       progress.classList.remove("page-progress--active", "page-progress--done");
       bar.style.transform = "scaleX(0)";
       value = 0;
-    }, 420);
+      doneTimer = undefined;
+    }, PAGE_PROGRESS_TIMING.completeDelayMs);
   };
 
-  const isSamePageHash = (url: URL) => (
-    url.origin === window.location.origin
-    && url.pathname === window.location.pathname
-    && url.search === window.location.search
-    && url.hash
-  );
+  window.__beebaPageProgress = { start, done };
 
   const onClick = (event: MouseEvent) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return;
-    }
-
     const target = event.target;
     if (!(target instanceof Element)) return;
 
     const link = target.closest<HTMLAnchorElement>("a[href]");
-    if (!link || link.target || link.hasAttribute("download") || link.getAttribute("aria-disabled") === "true") {
-      return;
-    }
-
-    const href = link.getAttribute("href");
-    if (!href || href.startsWith("mailto:") || href.startsWith("tel:")) {
-      return;
-    }
-
-    const url = new URL(href, window.location.href);
-    if (isSamePageHash(url)) {
+    if (!link || !shouldStartPageProgressForLink({
+      currentURL: window.location.href,
+      href: link.getAttribute("href"),
+      defaultPrevented: event.defaultPrevented,
+      button: event.button,
+      hasModifierKey: event.metaKey || event.ctrlKey || event.shiftKey || event.altKey,
+      target: link.target,
+      download: link.hasAttribute("download"),
+      ariaDisabled: link.getAttribute("aria-disabled") === "true",
+    })) {
       return;
     }
 
@@ -215,17 +244,28 @@ function initPageProgress(): Cleanup {
   };
 
   const onSubmit = (event: SubmitEvent) => {
-    if (event.defaultPrevented) return;
     const target = event.target;
-    if (!(target instanceof HTMLFormElement) || target.target) return;
+    if (!(target instanceof HTMLFormElement) || !shouldStartPageProgressForForm({
+      defaultPrevented: event.defaultPrevented,
+      target: target.target,
+    })) {
+      return;
+    }
     start();
   };
 
   const onPageShow = () => done();
-  const onPageHide = () => stopTimer();
+  const onPageHide = () => {
+    stopTimer();
+    stopWatchdogTimer();
+  };
 
   document.addEventListener("click", onClick);
   document.addEventListener("submit", onSubmit);
+  document.addEventListener("astro:before-preparation", start);
+  document.addEventListener("astro:page-load", done);
+  window.addEventListener(PAGE_PROGRESS_START_EVENT, start);
+  window.addEventListener(PAGE_PROGRESS_DONE_EVENT, done);
   window.addEventListener("pageshow", onPageShow);
   window.addEventListener("pagehide", onPageHide);
   if (document.readyState === "complete") {
@@ -236,8 +276,17 @@ function initPageProgress(): Cleanup {
 
   return () => {
     stopTimer();
+    stopDoneTimer();
+    stopWatchdogTimer();
+    if (window.__beebaPageProgress?.start === start) {
+      window.__beebaPageProgress = undefined;
+    }
     document.removeEventListener("click", onClick);
     document.removeEventListener("submit", onSubmit);
+    document.removeEventListener("astro:before-preparation", start);
+    document.removeEventListener("astro:page-load", done);
+    window.removeEventListener(PAGE_PROGRESS_START_EVENT, start);
+    window.removeEventListener(PAGE_PROGRESS_DONE_EVENT, done);
     window.removeEventListener("pageshow", onPageShow);
     window.removeEventListener("pagehide", onPageHide);
   };
@@ -522,8 +571,9 @@ function initAuthNav(): Cleanup {
   };
   const menu = document.querySelector<HTMLDetailsElement>("[data-auth-menu]");
   const avatar = document.querySelector<HTMLImageElement>("[data-auth-avatar]");
+  const initials = document.querySelector<HTMLElement>("[data-auth-initials]");
   const logout = document.querySelector<HTMLButtonElement>("[data-auth-logout]");
-  if (!menu || !avatar || !logout) {
+  if (!menu || !avatar || !initials || !logout) {
     return () => {};
   }
 
@@ -541,6 +591,7 @@ function initAuthNav(): Cleanup {
   };
 
   const refreshManagementAccess = () => {
+    if (isSigningOut) return;
     void syncAdminAccess()
       .then(() => render())
       .catch(() => {
@@ -549,6 +600,10 @@ function initAuthNav(): Cleanup {
   };
 
   const signOut = async () => {
+    if (isSigningOut) return;
+    isSigningOut = true;
+    authSSRStateInvalidated = true;
+    requestPageProgressStart();
     try {
       await logoutSession();
     } catch {
@@ -560,6 +615,13 @@ function initAuthNav(): Cleanup {
     menu.open = false;
     render();
     window.dispatchEvent(new CustomEvent("beeba:session-logout"));
+    const redirectHref = getPostLogoutRedirectHref(window.location);
+    if (redirectHref) {
+      navigateWithPageProgress(redirectHref);
+    } else {
+      isSigningOut = false;
+      requestPageProgressDone();
+    }
   };
 
   render();
@@ -575,9 +637,14 @@ function initAuthNav(): Cleanup {
     });
   logout.addEventListener("click", signOut);
   const onSessionChanged = () => {
-    authSSRStateInvalidated = false;
+    const hasSessionUser = Boolean(getStoredUser());
+    authSSRStateInvalidated = !hasSessionUser;
     render();
-    refreshManagementAccess();
+    if (hasSessionUser) {
+      refreshManagementAccess();
+    } else {
+      clearStoredAdminAccess();
+    }
   };
   const onStorage = (event: StorageEvent) => {
     if (event.key === AUTH_USER_KEY && !event.newValue) {

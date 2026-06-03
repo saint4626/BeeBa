@@ -4,6 +4,7 @@ import { Flag, Heart, MessageSquare, Send, X } from "lucide";
 import { readAuthSession } from "../../lib/auth/session";
 import { createComment, likeContent, listComments, reportContent, unlikeContent } from "../../lib/api/social";
 import type { PublicComment } from "../../lib/api/types";
+import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
 
 type IconNode = Array<[string, Record<string, string>]>;
@@ -79,7 +80,7 @@ async function refreshComments() {
 
 async function toggleLike() {
   if (!isAuthenticated.value) {
-    window.location.href = props.loginHref;
+    navigateWithPageProgress(props.loginHref);
     return;
   }
   error.value = "";
@@ -153,7 +154,7 @@ async function submitReport() {
 
 function openCommentDialog() {
   if (!isAuthenticated.value) {
-    window.location.href = props.loginHref;
+    navigateWithPageProgress(props.loginHref);
     return;
   }
   error.value = "";
@@ -162,7 +163,7 @@ function openCommentDialog() {
 
 function openReportDialog() {
   if (!isAuthenticated.value) {
-    window.location.href = props.loginHref;
+    navigateWithPageProgress(props.loginHref);
     return;
   }
   error.value = "";

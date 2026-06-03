@@ -129,7 +129,6 @@ func (h Handler) Create(c fiber.Ctx) error {
 		Description:              strings.TrimSpace(c.FormValue("description")),
 		NSFW:                     parseBool(c.FormValue("nsfw")),
 		Visibility:               visibility,
-		Version:                  strings.TrimSpace(c.FormValue("version")),
 		Bucket:                   h.cfg.QuarantineBucket,
 		StorageKey:               storageKey,
 		OriginalFilename:         fileHeader.Filename,

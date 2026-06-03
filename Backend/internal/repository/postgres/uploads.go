@@ -64,10 +64,9 @@ created_content AS (
     description,
     status,
     nsfw,
-    visibility,
-    version
+    visibility
   )
-  SELECT $1::uuid, selected_category.id, $3, $4, $5, 'pending_scan', $6, $7, NULLIF($8, '')
+  SELECT $1::uuid, selected_category.id, $3, $4, $5, 'pending_scan', $6, $7
   FROM selected_category
   RETURNING id, status, visibility, created_at
 )
@@ -80,7 +79,6 @@ FROM created_content`,
 		input.Description,
 		input.NSFW,
 		input.Visibility,
-		input.Version,
 	).Scan(&created.ContentID, &created.Status, &created.Visibility, &created.CreatedAt)
 	if err != nil {
 		return upload.Created{}, fmt.Errorf("insert content upload: %w", err)

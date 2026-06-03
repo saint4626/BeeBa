@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"beeba.org/internal/domain/media"
 
@@ -95,21 +96,18 @@ func (r MediaRepository) CreateContentImage(ctx context.Context, input media.Ima
 	}
 	defer tx.Rollback(ctx)
 
-	var ownsContent bool
+	var contentTitle string
 	err = tx.QueryRow(ctx, `
-SELECT EXISTS (
-  SELECT 1 FROM content_items
-  WHERE id = $1::uuid
-    AND author_id = $2::uuid
-    AND deleted_at IS NULL
-    AND status <> 'deleted'
-)`, input.ContentID, input.OwnerUserID).Scan(&ownsContent)
+SELECT title
+FROM content_items
+WHERE id = $1::uuid
+  AND author_id = $2::uuid
+  AND deleted_at IS NULL
+  AND status <> 'deleted'`, input.ContentID, input.OwnerUserID).Scan(&contentTitle)
 	if err != nil {
 		return media.UploadedImage{}, fmt.Errorf("check content ownership: %w", err)
 	}
-	if !ownsContent {
-		return media.UploadedImage{}, pgx.ErrNoRows
-	}
+	input.AltText = contentImageAltText(input.AltText, contentTitle)
 
 	if input.IsPrimary {
 		_, err = tx.Exec(ctx, `UPDATE content_images SET is_primary = false, updated_at = now() WHERE content_id = $1::uuid AND is_primary = true`, input.ContentID)
@@ -166,6 +164,14 @@ RETURNING id::text, alt_text, width, height, file_size, file_hash_sha256, mime_t
 		return media.UploadedImage{}, fmt.Errorf("commit content image upload: %w", err)
 	}
 	return image, nil
+}
+
+func contentImageAltText(altText string, contentTitle string) string {
+	value := strings.TrimSpace(altText)
+	if value != "" {
+		return value
+	}
+	return strings.TrimSpace(contentTitle)
 }
 
 func (r MediaRepository) ListOwnedContentImages(ctx context.Context, ownerUserID string, contentID string) ([]media.UploadedImage, error) {

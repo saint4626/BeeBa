@@ -2,6 +2,7 @@
 import { computed, defineComponent, h, onBeforeUnmount, ref, watch, type PropType } from "vue";
 import { ImagePlus } from "lucide";
 import { UPLOAD_LIMITS, megabytesFromBytes } from "../../lib/config/runtime";
+import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
 type IconNode = Array<[string, Record<string, string>]>;
@@ -39,7 +40,6 @@ const maxAvatarMegabytes = megabytesFromBytes(maxAvatarBytes);
 
 const owner = useOwnerStore();
 const loading = ref(false);
-const localError = ref("");
 const avatarLoadFailed = ref(false);
 const localPreviewURL = ref("");
 
@@ -64,13 +64,12 @@ async function onAvatarChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0] ?? null;
   input.value = "";
-  localError.value = "";
   if (!file) {
     return;
   }
   const validationError = validateAvatar(file);
   if (validationError) {
-    localError.value = validationError;
+    showToast(validationError, "error");
     return;
   }
 
@@ -80,7 +79,7 @@ async function onAvatarChange(event: Event) {
     await owner.setAvatar(file);
   } catch (caught) {
     clearLocalPreview();
-    localError.value = caught instanceof Error ? caught.message : "Avatar upload failed.";
+    showToast(caught instanceof Error ? caught.message : "Avatar upload failed.", "error");
   } finally {
     loading.value = false;
   }
@@ -138,7 +137,5 @@ function clearLocalPreview() {
     <p class="profile-avatar-panel__hint">
       New uploads replace the current avatar. Old avatar media is removed after the server accepts the new file.
     </p>
-
-    <div v-if="localError" class="message message--error">{{ localError }}</div>
   </div>
 </template>

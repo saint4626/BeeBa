@@ -107,7 +107,8 @@
 
 .global-search__scope summary:hover,
 .global-search__scope[open] summary {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--palette-black);
+  color: var(--palette-gold);
 }
 
 .global-search__scope .ui-dropdown__menu {
@@ -138,6 +139,12 @@
   color: var(--palette-black);
   cursor: pointer;
   font-size: 20px;
+  transition: background var(--motion-fast);
+}
+
+.global-search__submit:hover {
+  background: var(--palette-black);
+  color: var(--palette-gold);
 }
 
 .site-nav {
@@ -169,8 +176,8 @@
 }
 
 .nav-link:hover {
-  background: rgba(0, 0, 0, 0.08);
-  color: var(--palette-black);
+  background: var(--palette-black);
+  color: var(--palette-gold);
 }
 
 .nav-link--active {

@@ -16,6 +16,7 @@ import SocialPanel from "../../components/content/SocialPanel.vue";
 import LucideIcon from "../../components/ui/LucideIcon.astro";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
 import { getPublicContent } from "../../lib/api/content";
+import { publicMediaURL } from "../../lib/api/media-url";
 import { BYTE_UNITS, HASH_DISPLAY } from "../../lib/config/runtime";
 import type { PublicContentDetail, PublicContentImage } from "../../lib/api/types";
 
@@ -61,7 +62,7 @@ function uniqueImages(content: PublicContentDetail): PublicContentImage[] {
 }
 
 function mediaURL(image: PublicContentImage) {
-  return `${publicAPIBaseURL}/media/${image.id}`;
+  return publicMediaURL(publicAPIBaseURL, image.id);
 }
 
 function formatBytes(value?: number) {
@@ -195,7 +196,7 @@ function formatDate(value: string) {
                 <div>
                   <dt>Author</dt>
                   <dd class="detail-author">
-                    {item.author.avatar_image_id && <img src={`${publicAPIBaseURL}/media/${item.author.avatar_image_id}`} alt="" />}
+                    {item.author.avatar_image_id && <img src={publicMediaURL(publicAPIBaseURL, item.author.avatar_image_id)} alt="" width="24" height="24" loading="lazy" decoding="async" />}
                     <a href={`/users/${item.author.username}`}>{item.author.display_name || item.author.username}</a>
                   </dd>
                 </div>

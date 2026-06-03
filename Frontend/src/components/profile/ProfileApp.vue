@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from "vue";
-import { Boxes, Images, ShieldCheck, UserRound } from "lucide";
+import { Boxes, ShieldCheck, UserRound } from "lucide";
 import AccountSettingsPanel from "./AccountSettingsPanel.vue";
-import ContentMetadataEditor from "./ContentMetadataEditor.vue";
-import GalleryManager from "./GalleryManager.vue";
+import OwnerContentDrawer from "./OwnerContentDrawer.vue";
 import OwnerContentPanel from "./OwnerContentPanel.vue";
 import SecurityPanel from "./SecurityPanel.vue";
 import { readAuthSession } from "../../lib/auth/session";
+import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 import type { PublicUser } from "../../lib/api/types";
@@ -16,7 +16,7 @@ const props = defineProps<{
   initialUser: PublicUser;
 }>();
 
-type ProfileTabID = "profile" | "content" | "media" | "security";
+type ProfileTabID = "profile" | "content" | "security";
 type IconNode = Array<[string, Record<string, string>]>;
 
 const Icon = defineComponent({
@@ -50,7 +50,6 @@ const owner = useOwnerStore();
 const ready = ref(false);
 const activeTab = ref<ProfileTabID>("profile");
 const isAllowed = computed(() => ready.value && owner.isAuthenticated);
-const selectedTitle = computed(() => owner.selectedItem?.title ?? "No package selected");
 
 const tabs = computed(() => [
   {
@@ -66,13 +65,6 @@ const tabs = computed(() => [
     description: "Packages and listing metadata",
     metric: `${owner.items.length} items`,
     icon: Boxes as IconNode,
-  },
-  {
-    id: "media" as const,
-    label: "Media",
-    description: "Preview and gallery images",
-    metric: selectedTitle.value,
-    icon: Images as IconNode,
   },
   {
     id: "security" as const,
@@ -93,7 +85,7 @@ function selectAdjacentTab(direction: 1 | -1) {
 onMounted(() => {
   const session = readAuthSession();
   if (!session && !props.initialUser?.username) {
-    window.location.replace(props.loginHref);
+    navigateWithPageProgress(props.loginHref, "replace");
     return;
   }
   owner.bootstrapUser(props.initialUser);
@@ -138,7 +130,7 @@ watch(
   </div>
 
   <div v-else class="profile-shell">
-    <aside class="profile-tabs" role="tablist" aria-label="Profile sections">
+    <nav class="profile-tabs" role="tablist" aria-label="Profile sections">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -163,7 +155,7 @@ watch(
         <small>{{ tab.description }}</small>
         <em>{{ tab.metric }}</em>
       </button>
-    </aside>
+    </nav>
 
     <section
       class="profile-tab-panel"
@@ -176,13 +168,8 @@ watch(
         <AccountSettingsPanel />
       </div>
       <div v-else-if="activeTab === 'content'" class="profile-tab-panel__grid">
-        <div class="profile-content-layout">
-          <OwnerContentPanel />
-          <ContentMetadataEditor />
-        </div>
-      </div>
-      <div v-else-if="activeTab === 'media'" class="profile-tab-panel__grid">
-        <GalleryManager />
+        <OwnerContentPanel />
+        <OwnerContentDrawer />
       </div>
       <div v-else class="profile-tab-panel__grid">
         <SecurityPanel />

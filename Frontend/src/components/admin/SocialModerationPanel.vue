@@ -142,7 +142,6 @@ async function setReportStatus(item: ModerationReportItem, status: "in_review" |
     </div>
 
     <div v-if="!isAuthorized" class="message message--warning">Login with a moderator, admin, or owner account to review community activity.</div>
-    <div v-if="error" class="message message--error">{{ error }}</div>
 
     <div class="admin-controls">
       <label class="field">

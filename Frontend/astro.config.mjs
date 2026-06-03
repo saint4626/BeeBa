@@ -21,6 +21,8 @@ export default defineConfig({
       PUBLIC_HOME_FEATURED_LIMIT: envField.number({ context: 'client', access: 'public', default: 12 }),
       PUBLIC_PROFILE_ASSETS_LIMIT: envField.number({ context: 'client', access: 'public', default: 12 }),
       PUBLIC_OWNER_CONTENT_LIMIT: envField.number({ context: 'client', access: 'public', default: 12 }),
+      PUBLIC_OWNER_SYNC_INTERVAL_MS: envField.number({ context: 'client', access: 'public', default: 10_000 }),
+      PUBLIC_OWNER_PROCESSING_SYNC_INTERVAL_MS: envField.number({ context: 'client', access: 'public', default: 1_500 }),
       PUBLIC_SOCIAL_COMMENT_LIMIT: envField.number({ context: 'client', access: 'public', default: 24 }),
       PUBLIC_ADMIN_PAGE_LIMIT: envField.number({ context: 'client', access: 'public', default: 50 }),
       PUBLIC_ADMIN_POLL_INTERVAL_MS: envField.number({ context: 'client', access: 'public', default: 15_000 }),

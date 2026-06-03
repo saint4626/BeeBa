@@ -1,56 +1,25 @@
 <script setup lang="ts">
-import { defineComponent, h, type PropType } from "vue";
-import { KeyRound, Link, Trash2 } from "lucide";
 import { useOwnerStore } from "../../stores/owner.store";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { publicMediaURL } from "../../lib/api/media-url";
 import { BYTE_UNITS } from "../../lib/config/runtime";
-import { showToast } from "../../lib/ui/toast";
-import type { OwnerContentItem, OwnerModerationFeedback, UploadedImage } from "../../lib/api/types";
+import type { OwnerContentItem, UploadedImage } from "../../lib/api/types";
 
 const owner = useOwnerStore();
-type IconNode = Array<[string, Record<string, string>]>;
-const LinkIcon = Link as IconNode;
-const KeyRoundIcon = KeyRound as IconNode;
-const TrashIcon = Trash2 as IconNode;
-
-const Icon = defineComponent({
-  name: "LucideInlineIcon",
-  props: {
-    node: { type: Array as PropType<IconNode>, required: true },
-    size: { type: Number, default: 15 },
-  },
-  setup(props) {
-    return () =>
-      h(
-        "svg",
-        {
-          width: props.size,
-          height: props.size,
-          viewBox: "0 0 24 24",
-          fill: "none",
-          stroke: "currentColor",
-          "stroke-width": "2",
-          "stroke-linecap": "round",
-          "stroke-linejoin": "round",
-          "aria-hidden": "true",
-          focusable: "false",
-        },
-        props.node.map(([tag, attrs]) => h(tag, attrs)),
-      );
-  },
-});
-
-function moderationLabel(moderation: OwnerModerationFeedback) {
-  return moderation.action === "hide" ? "Hidden" : "Rejected";
-}
+const publicAPIBaseURL = getPublicAPIBaseURL();
 
 function primaryImage(item: OwnerContentItem): UploadedImage | null {
   const images = owner.imagesByContent[item.id] ?? [];
-  return images.find((image) => image.is_primary) ?? images[0] ?? null;
+  const processed = images.filter((image) => image.processing_status === "processed");
+  return processed.find((image) => image.is_primary) ?? processed[0] ?? images.find((image) => image.is_primary) ?? images[0] ?? null;
 }
 
 function ownerImageURL(image: UploadedImage) {
   return image.url.replace("/api/v1/media/", "/api/v1/me/media/");
+}
+
+function ownerAvatarURL() {
+  return publicMediaURL(publicAPIBaseURL, owner.user?.avatar_image_id);
 }
 
 function canRenderImage(item: OwnerContentItem) {
@@ -69,42 +38,16 @@ function formatBytes(value?: number) {
   return `${(value / BYTE_UNITS.gib).toFixed(2)} GB`;
 }
 
-function canCopyOwnerDownload(item: OwnerContentItem) {
-  return item.status === "published" && item.file?.scan_status === "clean";
+function categoryClass(item: OwnerContentItem) {
+  const slug = item.category.slug || item.category.name.toLowerCase();
+  if (slug.includes("avatar")) return "asset-card--avatar";
+  if (slug.includes("prop")) return "asset-card--prop";
+  if (slug.includes("prefab")) return "asset-card--prefab";
+  return "asset-card--world";
 }
 
-function ownerDownloadURL(item: OwnerContentItem) {
-  return new URL(`${getPublicAPIBaseURL()}/me/content/${item.id}/download`, window.location.href).href;
-}
-
-async function copyText(value: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    showToast(label, "success");
-  } catch {
-    showToast("Could not copy to clipboard", "error");
-  }
-}
-
-async function copyOwnerDownload(item: OwnerContentItem) {
-  if (!canCopyOwnerDownload(item)) {
-    showToast("Download link is available after clean processing.", "info");
-    return;
-  }
-  await copyText(ownerDownloadURL(item), "Owner download link copied");
-}
-
-async function copyPassword(item: OwnerContentItem) {
-  if (!item.unlock_password) {
-    showToast("No Basis password is stored for this package.", "info");
-    return;
-  }
-  await copyText(item.unlock_password, "Basis password copied");
-}
-
-async function deleteItem(item: OwnerContentItem) {
-  if (!window.confirm(`Delete "${item.title}"? This removes it from your library and the public catalog.`)) return;
-  await owner.deleteContent(item.id);
+function initials(value: string) {
+  return value.trim().slice(0, 2).toUpperCase();
 }
 </script>
 
@@ -132,76 +75,70 @@ async function deleteItem(item: OwnerContentItem) {
       </div>
     </div>
 
-    <div v-else class="owner-list owner-list--select">
+    <div v-else class="asset-masonry owner-card-grid" aria-label="Owner packages">
       <article
         v-for="item in owner.items"
         :key="item.id"
-        class="owner-item owner-item--button"
-        :class="{ active: item.id === owner.selectedContentID }"
+        class="asset-card owner-card"
+        :class="[categoryClass(item), { 'owner-card--active': item.id === owner.selectedContentID }]"
       >
-        <button class="owner-item__select" type="button" @click="owner.selectContent(item.id)">
-          <span v-if="canRenderImage(item)" class="owner-item__preview">
-            <img :src="ownerImageURL(primaryImage(item) as UploadedImage)" :alt="primaryImage(item)?.alt_text || item.title" loading="lazy" />
+        <button
+          class="owner-card__select"
+          type="button"
+          :aria-pressed="item.id === owner.selectedContentID"
+          @click="owner.selectContent(item.id)"
+        >
+          <img
+            v-if="canRenderImage(item)"
+            class="asset-card__image"
+            :src="ownerImageURL(primaryImage(item) as UploadedImage)"
+            :alt="primaryImage(item)?.alt_text || item.title"
+            loading="lazy"
+          />
+          <span v-else class="asset-card__placeholder">
+            <span>{{ initials(item.category.name) }}</span>
           </span>
-          <span v-else class="owner-item__preview owner-item__preview--placeholder">
-            {{ item.category.name.slice(0, 2).toUpperCase() }}
-            <em v-if="primaryImage(item)">{{ statusLabel(primaryImage(item)?.processing_status || "image pending") }}</em>
+          <span class="asset-card__shade" aria-hidden="true"></span>
+
+          <span class="asset-card__top">
+            <span class="asset-card__chip">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M2 12h20"></path>
+                <path d="M12 2a15.3 15.3 0 0 1 0 20"></path>
+                <path d="M12 2a15.3 15.3 0 0 0 0 20"></path>
+              </svg>
+              <span>{{ item.category.name }}</span>
+            </span>
+            <span>.bee</span>
           </span>
-          <span class="owner-item__main">
-            <strong>{{ item.title }}</strong>
-            <small class="owner-item__meta">
-              <span>{{ item.category.name }} / {{ item.visibility }}</span>
+
+          <span class="asset-card__body">
+            <span class="asset-card__author">
+              <span class="asset-card__avatar" aria-hidden="true">
+                <img
+                  v-if="owner.user?.avatar_image_id"
+                  :src="ownerAvatarURL()"
+                  alt=""
+                  width="24"
+                  height="24"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <template v-else>{{ initials(owner.user?.username || item.title) }}</template>
+              </span>
+              <span>{{ owner.user?.display_name || owner.user?.username || "Owner" }}</span>
+            </span>
+            <strong class="asset-card__title">{{ item.title }}</strong>
+            <span class="asset-card__metrics">
+              <span>{{ item.visibility }}</span>
               <span>{{ formatBytes(item.file?.file_size) }}</span>
-            </small>
+              <span>{{ statusLabel(item.status) }}</span>
+              <span>{{ statusLabel(item.file?.scan_status || "no file") }}</span>
+              <span v-if="item.nsfw">NSFW</span>
+            </span>
           </span>
         </button>
-
-        <span class="owner-item__badges" aria-label="Package state">
-          <span class="status-badge" :class="`status-badge--${item.status}`">
-            {{ statusLabel(item.status) }}
-          </span>
-          <span class="status-badge" :class="`status-badge--${item.file?.scan_status || 'no_file'}`">
-            {{ statusLabel(item.file?.scan_status || "no file") }}
-          </span>
-          <span v-if="item.nsfw" class="status-badge status-badge--nsfw">NSFW</span>
-        </span>
-
-        <div class="owner-item__actions">
-          <span class="owner-item__tool-label">
-            {{ item.visibility === "private" ? "Private owner tools" : "Owner tools" }}
-          </span>
-          <div class="owner-item__tool-buttons">
-            <button
-              class="owner-item__icon-action"
-              type="button"
-              :disabled="!canCopyOwnerDownload(item)"
-              :aria-label="canCopyOwnerDownload(item) ? 'Copy owner download link' : 'Download link is available after clean processing'"
-              :title="canCopyOwnerDownload(item) ? 'Copy owner download link' : 'Available after clean processing'"
-              @click="copyOwnerDownload(item)"
-            >
-              <Icon :node="LinkIcon" />
-            </button>
-            <button
-              class="owner-item__icon-action"
-              type="button"
-              :disabled="!item.unlock_password"
-              :aria-label="item.unlock_password ? 'Copy Basis password' : 'No Basis password stored'"
-              :title="item.unlock_password ? 'Copy Basis password' : 'No Basis password stored'"
-              @click="copyPassword(item)"
-            >
-              <Icon :node="KeyRoundIcon" />
-            </button>
-          </div>
-
-          <button class="button button--secondary owner-item__delete" type="button" :disabled="owner.loading" @click="deleteItem(item)">
-            <Icon :node="TrashIcon" />
-            <span>Delete</span>
-          </button>
-        </div>
-
-        <small v-if="item.moderation" class="owner-item__feedback">
-          {{ moderationLabel(item.moderation) }}: {{ item.moderation.reason }}
-        </small>
       </article>
     </div>
   </section>

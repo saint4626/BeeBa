@@ -28,8 +28,8 @@
 
 .site-header .ui-dropdown summary:hover,
 .site-header .ui-dropdown[open] summary {
-  background: rgba(0, 0, 0, 0.08);
-  color: var(--palette-black);
+  background: var(--palette-black);
+  color: var(--palette-gold);
 }
 
 .ui-dropdown summary::-webkit-details-marker {

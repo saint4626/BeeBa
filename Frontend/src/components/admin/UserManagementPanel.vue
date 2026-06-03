@@ -120,7 +120,6 @@ async function updateUser(user: AdminUser, action: "ban" | "unban") {
     </div>
 
     <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to manage users.</div>
-    <div v-if="error" class="message message--error">{{ error }}</div>
 
     <div class="admin-controls">
       <label class="field">

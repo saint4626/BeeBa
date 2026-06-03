@@ -117,7 +117,6 @@ function compactPayload(value: AdminJob["payload"]) {
     </div>
 
     <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to inspect worker jobs.</div>
-    <div v-if="error" class="message message--error">{{ error }}</div>
 
     <div class="admin-controls">
       <label class="field">

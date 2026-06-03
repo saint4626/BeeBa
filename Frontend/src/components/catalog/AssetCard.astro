@@ -1,6 +1,7 @@
 ---
 import { Blocks, Box, Download, Globe2, Heart, MessageCircle, UserRound } from "lucide";
 import LucideIcon from "../ui/LucideIcon.astro";
+import { publicMediaURL } from "../../lib/api/media-url";
 import type { PublicContentItem } from "../../lib/api/types";
 
 type AssetTone = "world" | "avatar" | "prop" | "prefab";
@@ -28,7 +29,9 @@ const author = item?.author.display_name || item?.author.username || placeholder
 const likes = item?.likes_count ?? 0;
 const downloads = item?.downloads_count ?? 0;
 const comments = item?.comments_count ?? 0;
-const imageURL = item?.preview_image_id ? `${publicAPIBaseURL}/media/${item.preview_image_id}` : "";
+const imageURL = publicMediaURL(publicAPIBaseURL, item?.preview_image_id);
+const authorAvatarURL = publicMediaURL(publicAPIBaseURL, item?.author.avatar_image_id);
+const authorInitial = author.slice(0, 1).toUpperCase();
 const toneByCategory = {
   worlds: "world",
   avatars: "avatar",
@@ -65,7 +68,9 @@ const categoryIcon = categoryIconByTone[tone];
   </span>
   <span class="asset-card__body">
     <span class="asset-card__author">
-      <span class="asset-card__avatar" aria-hidden="true">{author.slice(0, 1).toUpperCase()}</span>
+      <span class="asset-card__avatar" aria-hidden="true">
+        {authorAvatarURL ? <img src={authorAvatarURL} alt="" width="24" height="24" loading="lazy" decoding="async" /> : authorInitial}
+      </span>
       <span>{author}</span>
     </span>
     <span class="asset-card__title">{title}</span>

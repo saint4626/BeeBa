@@ -2788,9 +2788,6 @@ components:
         description:
           type: string
           maxLength: 5000
-        version:
-          type: string
-          maxLength: 80
         visibility:
           type: string
           enum:
@@ -2870,6 +2867,7 @@ components:
         alt_text:
           type: string
           maxLength: 500
+          description: Optional image alternative text. For content images, blank or missing values default to the content title.
         file:
           type: string
           format: binary

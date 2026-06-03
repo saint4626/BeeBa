@@ -95,7 +95,6 @@ function compactJSON(value: AuditLogEntry["after_json"]) {
     </div>
 
     <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to inspect audit logs.</div>
-    <div v-if="error" class="message message--error">{{ error }}</div>
 
     <div class="admin-controls">
       <label class="field">

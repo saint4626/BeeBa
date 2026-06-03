@@ -175,6 +175,15 @@ textarea {
   font: inherit;
 }
 
+button:not(:disabled),
+summary {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 :where(a, button, summary, input, select, textarea):focus,
 :where(a, button, summary, input, select, textarea):focus-visible {
   outline: none;

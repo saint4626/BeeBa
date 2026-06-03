@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
 const owner = useOwnerStore();
 const currentPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
-const localError = ref("");
 
 const emailStatus = computed(() => owner.user?.email_verified_at ? "Verified" : "Verification pending");
 
 async function submitPassword() {
-  localError.value = "";
   if (newPassword.value !== confirmPassword.value) {
-    localError.value = "New password confirmation does not match.";
+    showToast("New password confirmation does not match.", "error");
     return;
   }
   try {
@@ -22,16 +21,15 @@ async function submitPassword() {
     newPassword.value = "";
     confirmPassword.value = "";
   } catch (caught) {
-    localError.value = caught instanceof Error ? caught.message : "Password change failed.";
+    showToast(caught instanceof Error ? caught.message : "Password change failed.", "error");
   }
 }
 
 async function resendVerification() {
-  localError.value = "";
   try {
     await owner.requestEmailVerification();
   } catch (caught) {
-    localError.value = caught instanceof Error ? caught.message : "Verification request failed.";
+    showToast(caught instanceof Error ? caught.message : "Verification request failed.", "error");
   }
 }
 </script>
@@ -83,7 +81,5 @@ async function resendVerification() {
         Change password
       </button>
     </form>
-
-    <div v-if="localError" class="message message--error">{{ localError }}</div>
   </section>
 </template>

@@ -15,7 +15,6 @@ type CreateInput struct {
 	Description              string
 	NSFW                     bool
 	Visibility               string
-	Version                  string
 	Bucket                   string
 	StorageKey               string
 	OriginalFilename         string

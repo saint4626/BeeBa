@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { publicMediaURL } from "../../lib/api/media-url";
 import type { APIListResponse, CatalogTag, Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
 
 type IconName = "worlds" | "avatars" | "props" | "prefabs" | "download" | "heart" | "comment";
@@ -116,8 +117,16 @@ function cardHref(item: PublicContentItem) {
   return `/content/${item.id}`;
 }
 
-function imageURL(item: PublicContentItem) {
-  return item.preview_image_id ? `${props.publicAPIBaseURL}/media/${item.preview_image_id}` : "";
+function mediaURL(imageID?: string | null) {
+  return publicMediaURL(props.publicAPIBaseURL, imageID);
+}
+
+function authorName(item: PublicContentItem) {
+  return item.author.display_name || item.author.username;
+}
+
+function authorInitial(item: PublicContentItem) {
+  return authorName(item).slice(0, 1).toUpperCase();
 }
 
 function categoryIcon(slug: Category["slug"]): IconName {
@@ -189,7 +198,7 @@ function backToTop() {
         :aria-label="item.title"
         :data-motion-card="index < initialItems.length ? '' : null"
       >
-        <img v-if="imageURL(item)" class="asset-card__image" :src="imageURL(item)" alt="" :loading="index < 5 ? 'eager' : 'lazy'" />
+        <img v-if="item.preview_image_id" class="asset-card__image" :src="mediaURL(item.preview_image_id)" alt="" :loading="index < 5 ? 'eager' : 'lazy'" />
         <span v-else class="asset-card__placeholder" aria-hidden="true">
           <span>{{ item.category.name.slice(0, 2).toUpperCase() }}</span>
         </span>
@@ -203,8 +212,19 @@ function backToTop() {
         </span>
         <span class="asset-card__body">
           <span class="asset-card__author">
-            <span class="asset-card__avatar" aria-hidden="true">{{ (item.author.display_name || item.author.username).slice(0, 1).toUpperCase() }}</span>
-            <span>{{ item.author.display_name || item.author.username }}</span>
+            <span class="asset-card__avatar" aria-hidden="true">
+              <img
+                v-if="item.author.avatar_image_id"
+                :src="mediaURL(item.author.avatar_image_id)"
+                alt=""
+                width="24"
+                height="24"
+                loading="lazy"
+                decoding="async"
+              />
+              <template v-else>{{ authorInitial(item) }}</template>
+            </span>
+            <span>{{ authorName(item) }}</span>
           </span>
           <span class="asset-card__title">{{ item.title }}</span>
           <span class="asset-card__metrics" aria-label="Asset metrics">

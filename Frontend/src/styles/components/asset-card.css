@@ -115,11 +115,20 @@
 .asset-card__avatar {
   width: 24px;
   height: 24px;
+  flex: 0 0 24px;
   display: grid;
   place-items: center;
+  overflow: hidden;
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.18);
   font-size: 11px;
+}
+
+.asset-card__avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .asset-card__title {

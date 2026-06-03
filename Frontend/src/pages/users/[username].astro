@@ -5,6 +5,7 @@ import LucideIcon from "../../components/ui/LucideIcon.astro";
 import { Boxes, Calendar, Download, Heart, PackageCheck } from "lucide";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
 import { getPublicProfile, listCategories, listPublicContent, listTags } from "../../lib/api/content";
+import { publicMediaURL } from "../../lib/api/media-url";
 import { PAGE_LIMITS } from "../../lib/config/runtime";
 import type { CatalogTag, Category, CursorPagination, PublicContentItem, PublicProfile } from "../../lib/api/types";
 
@@ -75,7 +76,7 @@ const pageTitle = `${displayName} - BeeBa Profile`;
 const description = profile
   ? `${displayName} has ${profile.published_count} published Basis / VR assets on BeeBa.`
   : "BeeBa public user profile.";
-const avatarURL = profile?.avatar_image_id ? `${publicAPIBaseURL}/media/${profile.avatar_image_id}` : "";
+const avatarURL = publicMediaURL(publicAPIBaseURL, profile?.avatar_image_id);
 const joinedAt = profile ? new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(new Date(profile.created_at)) : "";
 const initials = (displayName || username).slice(0, 2).toUpperCase();
 ---

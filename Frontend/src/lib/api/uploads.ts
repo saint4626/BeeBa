@@ -1,5 +1,6 @@
 import { authHeaders, browserJSON } from "./browser";
 import { getPublicAPIBaseURL } from "./client";
+import { createContentUploadFormData } from "./upload-form-data";
 import { PAGE_LIMITS } from "../config/runtime";
 import type { APIListResponse, ContentUploadCreated, OwnerContentItem, OwnerContentUpdateInput } from "./types";
 
@@ -8,22 +9,13 @@ export async function uploadContentPackage(input: {
   category: string;
   title: string;
   description: string;
-  version: string;
   visibility: "public" | "private";
   unlockPassword: string;
   nsfw: boolean;
   file: File;
   onProgress?: (progress: { loaded: number; total: number; percent: number }) => void;
 }): Promise<ContentUploadCreated> {
-  const body = new FormData();
-  body.set("category", input.category);
-  body.set("title", input.title);
-  body.set("description", input.description);
-  body.set("version", input.version);
-  body.set("visibility", input.visibility);
-  body.set("unlock_password", input.unlockPassword);
-  body.set("nsfw", String(input.nsfw));
-  body.set("file", input.file);
+  const body = createContentUploadFormData(input);
 
   const response = await uploadMultipart<{ data: ContentUploadCreated }>("/content/uploads", body, {
     accessToken: input.accessToken,

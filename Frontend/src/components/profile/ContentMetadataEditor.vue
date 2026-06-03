@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
 const owner = useOwnerStore();
@@ -8,7 +9,6 @@ const description = ref("");
 const visibility = ref<"public" | "private">("public");
 const nsfw = ref(false);
 const tags = ref("");
-const localError = ref("");
 const saving = ref(false);
 
 const disabled = computed(() => !owner.selectedItem || saving.value || owner.loading);
@@ -21,20 +21,18 @@ watch(
     visibility.value = item?.visibility ?? "public";
     nsfw.value = item?.nsfw ?? false;
     tags.value = item?.tags.map((tag) => tag.name).join(", ") ?? "";
-    localError.value = "";
   },
   { immediate: true },
 );
 
 async function submitMetadata() {
-  localError.value = "";
   if (!owner.selectedItem) {
-    localError.value = "Select content before editing metadata.";
+    showToast("Select content before editing metadata.", "info");
     return;
   }
   const normalizedTitle = title.value.trim();
   if (!normalizedTitle) {
-    localError.value = "Title is required.";
+    showToast("Title is required.", "error");
     return;
   }
   const tagList = tags.value
@@ -52,7 +50,7 @@ async function submitMetadata() {
       tags: tagList,
     });
   } catch (caught) {
-    localError.value = caught instanceof Error ? caught.message : "Metadata update failed.";
+    showToast(caught instanceof Error ? caught.message : "Metadata update failed.", "error");
   } finally {
     saving.value = false;
   }
@@ -102,7 +100,5 @@ async function submitMetadata() {
         {{ saving ? "Saving..." : "Save metadata" }}
       </button>
     </form>
-
-    <div v-if="localError" class="message message--error">{{ localError }}</div>
   </section>
 </template>

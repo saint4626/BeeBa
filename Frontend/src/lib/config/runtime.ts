@@ -7,6 +7,8 @@ import {
   PUBLIC_HOME_SOURCE_LIMIT,
   PUBLIC_MAX_IMAGE_UPLOAD_BYTES,
   PUBLIC_OWNER_CONTENT_LIMIT,
+  PUBLIC_OWNER_PROCESSING_SYNC_INTERVAL_MS,
+  PUBLIC_OWNER_SYNC_INTERVAL_MS,
   PUBLIC_PROFILE_ASSETS_LIMIT,
   PUBLIC_SOCIAL_COMMENT_LIMIT,
 } from "astro:env/client";
@@ -34,6 +36,17 @@ export const PAGE_LIMITS = {
 
 export const ADMIN_TIMING = {
   pollIntervalMs: PUBLIC_ADMIN_POLL_INTERVAL_MS,
+} as const;
+
+export const OWNER_TIMING = {
+  syncIntervalMs: PUBLIC_OWNER_SYNC_INTERVAL_MS,
+  processingSyncIntervalMs: PUBLIC_OWNER_PROCESSING_SYNC_INTERVAL_MS,
+} as const;
+
+export const PAGE_PROGRESS_TIMING = {
+  tickMs: 180,
+  completeDelayMs: 420,
+  watchdogMs: 12_000,
 } as const;
 
 export const HASH_DISPLAY = {
