@@ -1,19 +1,19 @@
 ---
-import CatalogView from "../../components/catalog/CatalogView.astro";
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import LucideIcon from "../../components/ui/LucideIcon.astro";
+import CatalogView from "../../../components/catalog/CatalogView.astro";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import LucideIcon from "../../../components/ui/LucideIcon.astro";
 import { Boxes, Calendar, Download, Heart, PackageCheck } from "lucide";
-import { getPublicAPIBaseURL } from "../../lib/api/client";
-import { getPublicProfile, listCategories, listPublicContent, listTags } from "../../lib/api/content";
-import { publicMediaURL } from "../../lib/api/media-url";
-import { PAGE_LIMITS } from "../../lib/config/runtime";
-import { localizedPath, ui } from "../../lib/i18n";
-import type { CatalogTag, Category, CursorPagination, PublicContentItem, PublicProfile } from "../../lib/api/types";
+import { getPublicAPIBaseURL } from "../../../lib/api/client";
+import { getPublicProfile, listCategories, listPublicContent, listTags } from "../../../lib/api/content";
+import { publicMediaURL } from "../../../lib/api/media-url";
+import { PAGE_LIMITS } from "../../../lib/config/runtime";
+import { localizedPath, ui } from "../../../lib/i18n";
+import type { CatalogTag, Category, CursorPagination, PublicContentItem, PublicProfile } from "../../../lib/api/types";
 
 export const prerender = false;
 
 const { username } = Astro.params;
-const locale = "en";
+const locale = "ru";
 const t = ui[locale];
 const publicAPIBaseURL = getPublicAPIBaseURL();
 
@@ -84,7 +84,7 @@ const joinedAt = profile ? new Intl.DateTimeFormat(locale, { month: "short", yea
 const initials = (displayName || username).slice(0, 2).toUpperCase();
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalPath={`/users/${username}`}>
+<BaseLayout title={pageTitle} description={description} canonicalPath={`/ru/users/${username}`}>
   {error ? (
     <div class="page-container">
       <div class="empty-state">

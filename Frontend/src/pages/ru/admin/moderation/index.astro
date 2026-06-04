@@ -1,12 +1,12 @@
 ---
-import BaseLayout from "../../../layouts/BaseLayout.astro";
-import ModerationApp from "../../../components/admin/ModerationApp.vue";
-import { getServerAPIBaseURL } from "../../../lib/api/client";
-import { ui } from "../../../lib/i18n";
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import ModerationApp from "../../../../components/admin/ModerationApp.vue";
+import { getServerAPIBaseURL } from "../../../../lib/api/client";
+import { ui } from "../../../../lib/i18n";
 
-const locale = "en";
+const locale = "ru";
 const t = ui[locale];
-const loginHref = `/login?next=${encodeURIComponent("/admin/moderation")}`;
+const loginHref = `/ru/login?next=${encodeURIComponent("/ru/admin/moderation")}`;
 let hasAdminAccess = false;
 
 try {
@@ -33,7 +33,7 @@ if (!hasAdminAccess) {
 <BaseLayout
   title={t.admin.title}
   description={t.admin.description}
-  canonicalPath="/admin/moderation"
+  canonicalPath="/ru/admin/moderation"
 >
   <div class="page-container">
     <section class="catalog-head" aria-labelledby="moderation-title">

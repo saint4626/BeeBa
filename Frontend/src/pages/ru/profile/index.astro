@@ -2,8 +2,11 @@
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import ProfileApp from "../../../components/profile/ProfileApp.vue";
 import { getServerAPIBaseURL } from "../../../lib/api/client";
+import { ui } from "../../../lib/i18n";
 import type { PublicUser } from "../../../lib/api/types";
 
+const locale = "ru";
+const t = ui[locale];
 const loginHref = `/ru/login?next=${encodeURIComponent("/ru/profile")}`;
 let user: PublicUser | null = null;
 try {
@@ -28,22 +31,19 @@ if (!user) {
 ---
 
 <BaseLayout
-  title="Профиль - BeeBa"
-  description="Управление аккаунтом BeeBa, аватаром, приватными и публичными загрузками, превью, галереями и метаданными контента."
+  title={t.profile.title}
+  description={t.profile.description}
   canonicalPath="/ru/profile"
 >
   <div class="profile-workspace">
     <section class="profile-workspace__head" aria-labelledby="profile-title">
       <div>
-        <p class="eyebrow">Private workspace</p>
-        <h1 id="profile-title">Профиль</h1>
-        <p>
-          Управляйте аккаунтом, аватаром, загрузками, видимостью, причинами модерации,
-          превью и галереями контента из одного приватного пространства.
-        </p>
+        <p class="eyebrow">{t.profile.eyebrow}</p>
+        <h1 id="profile-title">{t.profile.heading}</h1>
+        <p>{t.profile.lead}</p>
       </div>
     </section>
 
-    <ProfileApp client:load loginHref={loginHref} initialUser={user} />
+    <ProfileApp client:load loginHref={loginHref} initialUser={user} locale={locale} />
   </div>
 </BaseLayout>

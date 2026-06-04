@@ -2,6 +2,7 @@
 import { Blocks, Box, Download, Globe2, Heart, MessageCircle, UserRound } from "lucide";
 import LucideIcon from "../ui/LucideIcon.astro";
 import { publicMediaURL } from "../../lib/api/media-url";
+import { localizedPath, type Locale, ui } from "../../lib/i18n";
 import type { PublicContentItem } from "../../lib/api/types";
 
 type AssetTone = "world" | "avatar" | "prop" | "prefab";
@@ -17,12 +18,14 @@ interface Props {
   item?: PublicContentItem;
   placeholder?: PlaceholderAsset;
   publicAPIBaseURL: string;
+  locale?: Locale;
   priority?: boolean;
 }
 
-const { item, placeholder, publicAPIBaseURL, priority = false } = Astro.props;
+const { item, placeholder, publicAPIBaseURL, locale = "en", priority = false } = Astro.props;
+const t = ui[locale].catalog;
 
-const href = item ? `/content/${item.id}` : "/upload";
+const href = item ? localizedPath(locale, `/content/${item.id}`) : localizedPath(locale, "/upload");
 const title = item?.title ?? placeholder?.title ?? "Awaiting first upload";
 const category = item?.category.name ?? placeholder?.category ?? "Asset";
 const author = item?.author.display_name || item?.author.username || placeholder?.author || "Community slot";
@@ -74,16 +77,16 @@ const categoryIcon = categoryIconByTone[tone];
       <span>{author}</span>
     </span>
     <span class="asset-card__title">{title}</span>
-    <span class="asset-card__metrics" aria-label="Asset metrics">
-      <span aria-label={`${downloads.toLocaleString()} downloads`}>
+    <span class="asset-card__metrics" aria-label={t.metricsLabel}>
+      <span aria-label={`${downloads.toLocaleString()} ${t.downloadsLabel}`}>
         <LucideIcon node={Download} size={12} />
         {downloads.toLocaleString()}
       </span>
-      <span aria-label={`${likes.toLocaleString()} likes`}>
+      <span aria-label={`${likes.toLocaleString()} ${t.likesLabel}`}>
         <LucideIcon node={Heart} size={12} />
         {likes.toLocaleString()}
       </span>
-      <span aria-label={`${comments.toLocaleString()} comments`}>
+      <span aria-label={`${comments.toLocaleString()} ${t.commentsLabel}`}>
         <LucideIcon node={MessageCircle} size={12} />
         {comments.toLocaleString()}
       </span>

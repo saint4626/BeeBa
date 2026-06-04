@@ -19,6 +19,8 @@ type TagRepository struct {
 
 var ErrTagConflict = errors.New("tag slug already exists")
 
+const publicTagHavingClause = "HAVING count(ci.id) > 0"
+
 func (r TagRepository) ListAdminTags(ctx context.Context) ([]tags.Tag, error) {
 	rows, err := r.db.Query(ctx, `
 SELECT
@@ -149,7 +151,7 @@ LEFT JOIN content_items ci ON ci.id = ct.content_id
   AND ci.hidden_at IS NULL
   AND ci.published_at IS NOT NULL
 GROUP BY t.id
-HAVING count(ci.id) > 0 OR t.is_system = true
+`+publicTagHavingClause+`
 ORDER BY published_count DESC, t.name ASC
 LIMIT 100`)
 	if err != nil {

@@ -3,12 +3,14 @@ import { onMounted, ref, watch } from "vue";
 import { listAdminFiles, rescanAdminFile } from "../../lib/api/admin";
 import type { AdminFile } from "../../lib/api/types";
 import { BYTE_UNITS } from "../../lib/config/runtime";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
   accessToken: string;
   isAuthorized: boolean;
   refreshNonce?: number;
+  locale?: Locale;
 }>();
 
 const emit = defineEmits<{
@@ -16,6 +18,9 @@ const emit = defineEmits<{
 }>();
 
 const files = ref<AdminFile[]>([]);
+const locale = props.locale ?? "en";
+const t = ui[locale].adminPanels.files;
+const common = ui[locale].adminPanels.common;
 const query = ref("");
 const scanStatus = ref("");
 const bucket = ref("");
@@ -65,7 +70,7 @@ async function loadFiles(cursor: string, silent = false) {
     nextCursor.value = page.nextCursor;
     emit("count", files.value.length);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load content files.";
+    error.value = caught instanceof Error ? caught.message : t.loadFailed;
     emit("count", files.value.length);
     if (!silent) {
       showToast(error.value, "error");
@@ -77,7 +82,7 @@ async function loadFiles(cursor: string, silent = false) {
 
 async function rescanFile(file: AdminFile) {
   if (!rescanReason.value.trim()) {
-    error.value = "Reason is required for re-scan.";
+    error.value = t.reasonRequired;
     showToast(error.value, "error");
     return;
   }
@@ -86,10 +91,10 @@ async function rescanFile(file: AdminFile) {
   try {
     const result = await rescanAdminFile(props.accessToken, file.id, rescanReason.value.trim());
     rescanReason.value = "";
-    showToast(`File queued for re-scan. Job ${result.job_id}`, "success");
+    showToast(`${t.queuedPrefix} ${result.job_id}`, "success");
     await refreshFiles(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to queue re-scan.";
+    error.value = caught instanceof Error ? caught.message : t.queueFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -114,38 +119,38 @@ function compactScan(value: AdminFile["scan_result"]) {
   <section class="panel panel--wide" aria-labelledby="files-title">
     <div class="panel__head panel__head--row">
       <div>
-        <p class="eyebrow">Files</p>
-        <h2 id="files-title">File operations</h2>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="files-title">{{ t.title }}</h2>
       </div>
-      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshFiles()">Refresh</button>
+      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshFiles()">{{ common.refresh }}</button>
     </div>
 
-    <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to inspect content files.</div>
+    <div v-if="!isAuthorized" class="message message--warning">{{ t.unauthorized }}</div>
 
     <div class="admin-controls">
       <label class="field">
-        Search
-        <input v-model="query" type="search" maxlength="200" placeholder="filename or title" :disabled="!isAuthorized" @change="refreshFiles()" />
+        {{ common.search }}
+        <input v-model="query" type="search" maxlength="200" :placeholder="t.searchPlaceholder" :disabled="!isAuthorized" @change="refreshFiles()" />
       </label>
       <label class="field">
-        Scan status
+        {{ t.scanStatus }}
         <select v-model="scanStatus" :disabled="!isAuthorized" @change="refreshFiles()">
-          <option value="">All scan statuses</option>
-          <option value="pending">Pending</option>
-          <option value="running">Running</option>
-          <option value="clean">Clean</option>
-          <option value="suspicious">Suspicious</option>
-          <option value="infected">Infected</option>
-          <option value="failed">Failed</option>
-          <option value="skipped">Skipped</option>
+          <option value="">{{ t.allScanStatuses }}</option>
+          <option value="pending">{{ common.pending }}</option>
+          <option value="running">{{ common.running }}</option>
+          <option value="clean">{{ common.clean }}</option>
+          <option value="suspicious">{{ common.suspicious }}</option>
+          <option value="infected">{{ common.infected }}</option>
+          <option value="failed">{{ common.failed }}</option>
+          <option value="skipped">{{ common.skipped }}</option>
         </select>
       </label>
       <label class="field">
-        Bucket
+        {{ t.bucket }}
         <input v-model="bucket" type="search" maxlength="120" :disabled="!isAuthorized" @change="refreshFiles()" />
       </label>
       <label class="field">
-        Content ID
+        {{ t.contentID }}
         <input v-model="contentID" type="search" :disabled="!isAuthorized" @change="refreshFiles()" />
       </label>
       <label class="field">
@@ -153,16 +158,16 @@ function compactScan(value: AdminFile["scan_result"]) {
         <input v-model="hash" type="search" maxlength="64" :disabled="!isAuthorized" @change="refreshFiles()" />
       </label>
       <label class="field">
-        Re-scan reason
+        {{ t.rescanReason }}
         <input v-model="rescanReason" type="text" maxlength="500" :disabled="!isAuthorized" />
       </label>
     </div>
 
     <div v-if="files.length === 0" class="empty-state">
-      <span class="empty-state__badge">No files loaded</span>
+      <span class="empty-state__badge">{{ t.emptyBadge }}</span>
       <div>
-        <h2>No content files match this filter.</h2>
-        <p>Uploaded `.bee` packages appear here after they are recorded in PostgreSQL.</p>
+        <h2>{{ t.emptyTitle }}</h2>
+        <p>{{ t.emptyCopy }}</p>
       </div>
     </div>
 
@@ -178,15 +183,15 @@ function compactScan(value: AdminFile["scan_result"]) {
           <p>{{ file.content_title }} / @{{ file.author_username }}</p>
           <dl class="meta-grid">
             <div>
-              <dt>Size</dt>
+              <dt>{{ t.size }}</dt>
               <dd>{{ formatBytes(file.file_size) }}</dd>
             </div>
             <div>
-              <dt>Content</dt>
+              <dt>{{ common.content }}</dt>
               <dd>{{ file.content_status }}</dd>
             </div>
             <div>
-              <dt>Uploader</dt>
+              <dt>{{ t.uploader }}</dt>
               <dd>@{{ file.uploaded_by_username }}</dd>
             </div>
           </dl>
@@ -194,11 +199,11 @@ function compactScan(value: AdminFile["scan_result"]) {
           <code>{{ compactScan(file.scan_result) }}</code>
         </div>
         <div class="moderation-actions">
-          <button class="button button--secondary" type="button" :disabled="actionID === file.id || !['failed', 'suspicious', 'infected'].includes(file.scan_status)" @click="rescanFile(file)">Re-scan</button>
+          <button class="button button--secondary" type="button" :disabled="actionID === file.id || !['failed', 'suspicious', 'infected'].includes(file.scan_status)" @click="rescanFile(file)">{{ t.rescan }}</button>
         </div>
       </article>
       <button v-if="nextCursor" class="button button--secondary" type="button" :disabled="loading" @click="loadMore">
-        {{ loading ? "Loading..." : "Load more" }}
+        {{ loading ? common.loading : common.loadMore }}
       </button>
     </div>
   </section>

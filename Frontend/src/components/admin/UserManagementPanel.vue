@@ -2,12 +2,14 @@
 import { onMounted, ref, watch } from "vue";
 import { banAdminUser, listAdminUsers, setAdminUserRoles, unbanAdminUser } from "../../lib/api/admin";
 import type { AdminUser } from "../../lib/api/types";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
   accessToken: string;
   isAuthorized: boolean;
   refreshNonce?: number;
+  locale?: Locale;
 }>();
 
 const emit = defineEmits<{
@@ -15,6 +17,9 @@ const emit = defineEmits<{
 }>();
 
 const users = ref<AdminUser[]>([]);
+const locale = props.locale ?? "en";
+const t = ui[locale].adminPanels.users;
+const common = ui[locale].adminPanels.common;
 const query = ref("");
 const roleFilter = ref("");
 const reason = ref("");
@@ -41,7 +46,7 @@ async function refreshUsers(silent = false) {
     users.value = await listAdminUsers(props.accessToken, query.value.trim(), roleFilter.value);
     emit("count", users.value.length);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load users.";
+    error.value = caught instanceof Error ? caught.message : t.loadFailed;
     emit("count", users.value.length);
     if (!silent) {
       showToast(error.value, "error");
@@ -53,7 +58,7 @@ async function refreshUsers(silent = false) {
 
 async function banUser(user: AdminUser) {
   if (!reason.value.trim()) {
-    error.value = "Reason is required for ban.";
+    error.value = t.reasonRequired;
     showToast(error.value, "error");
     return;
   }
@@ -77,10 +82,10 @@ async function toggleRole(user: AdminUser, role: "moderator" | "admin") {
     }
     roles.add("user");
     await setAdminUserRoles(props.accessToken, user.id, Array.from(roles));
-    showToast("User roles updated.", "success");
+    showToast(t.rolesUpdated, "success");
     await refreshUsers(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to update roles.";
+    error.value = caught instanceof Error ? caught.message : t.rolesUpdateFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -98,10 +103,10 @@ async function updateUser(user: AdminUser, action: "ban" | "unban") {
       await unbanAdminUser(props.accessToken, user.id, reason.value.trim());
     }
     reason.value = "";
-    showToast(action === "ban" ? "User banned." : "User unbanned.", "success");
+    showToast(action === "ban" ? t.userBanned : t.userUnbanned, "success");
     await refreshUsers(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to update user.";
+    error.value = caught instanceof Error ? caught.message : t.userUpdateFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -113,40 +118,40 @@ async function updateUser(user: AdminUser, action: "ban" | "unban") {
   <section class="panel panel--wide" aria-labelledby="users-title">
     <div class="panel__head panel__head--row">
       <div>
-        <p class="eyebrow">Users</p>
-        <h2 id="users-title">User management</h2>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="users-title">{{ t.title }}</h2>
       </div>
-      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshUsers()">Refresh</button>
+      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshUsers()">{{ common.refresh }}</button>
     </div>
 
-    <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to manage users.</div>
+    <div v-if="!isAuthorized" class="message message--warning">{{ t.unauthorized }}</div>
 
     <div class="admin-controls">
       <label class="field">
-        Search
+        {{ common.search }}
         <input v-model="query" type="search" maxlength="200" :disabled="!isAuthorized" @change="refreshUsers()" />
       </label>
       <label class="field">
-        Role
+        {{ t.role }}
         <select v-model="roleFilter" :disabled="!isAuthorized" @change="refreshUsers()">
-          <option value="">All roles</option>
-          <option value="user">User</option>
-          <option value="moderator">Moderator</option>
-          <option value="admin">Admin</option>
-          <option value="owner">Owner</option>
+          <option value="">{{ t.allRoles }}</option>
+          <option value="user">{{ common.user }}</option>
+          <option value="moderator">{{ common.moderator }}</option>
+          <option value="admin">{{ common.admin }}</option>
+          <option value="owner">{{ common.owner }}</option>
         </select>
       </label>
       <label class="field">
-        Ban reason
+        {{ t.banReason }}
         <input v-model="reason" type="text" maxlength="500" :disabled="!isAuthorized" />
       </label>
     </div>
 
     <div v-if="users.length === 0" class="empty-state">
-      <span class="empty-state__badge">No users loaded</span>
+      <span class="empty-state__badge">{{ t.emptyBadge }}</span>
       <div>
-        <h2>No user records match this filter.</h2>
-        <p>Admin and owner accounts can load active users, update roles, and ban accounts.</p>
+        <h2>{{ t.emptyTitle }}</h2>
+        <p>{{ t.emptyCopy }}</p>
       </div>
     </div>
 
@@ -154,35 +159,35 @@ async function updateUser(user: AdminUser, action: "ban" | "unban") {
       <article v-for="user in users" :key="user.id" class="moderation-item moderation-item--compact">
         <div class="moderation-item__main">
           <div class="content-card__topline">
-            <span class="badge" :class="{ 'badge--nsfw': user.banned_at }">{{ user.banned_at ? "banned" : "active" }}</span>
+            <span class="badge" :class="{ 'badge--nsfw': user.banned_at }">{{ user.banned_at ? t.banned : common.active }}</span>
             <span v-for="role in user.roles" :key="role" class="badge badge--bee">{{ role }}</span>
           </div>
           <h3>{{ user.display_name || user.username }}</h3>
           <p>{{ user.email }} / @{{ user.username }}</p>
           <dl class="meta-grid">
             <div>
-              <dt>Content</dt>
+              <dt>{{ common.content }}</dt>
               <dd>{{ user.content_count }}</dd>
             </div>
             <div>
-              <dt>Email</dt>
-              <dd>{{ user.email_verified_at ? "verified" : "pending" }}</dd>
+              <dt>{{ common.email }}</dt>
+              <dd>{{ user.email_verified_at ? common.verified : common.pending }}</dd>
             </div>
             <div>
-              <dt>User ID</dt>
+              <dt>{{ t.userID }}</dt>
               <dd>{{ user.id }}</dd>
             </div>
           </dl>
         </div>
         <div class="moderation-actions">
           <button class="button button--secondary" type="button" :disabled="actionID === user.id || user.roles.includes('owner')" @click="toggleRole(user, 'moderator')">
-            {{ user.roles.includes("moderator") ? "Remove moderator" : "Make moderator" }}
+            {{ user.roles.includes("moderator") ? t.removeModerator : t.makeModerator }}
           </button>
           <button class="button button--secondary" type="button" :disabled="actionID === user.id || user.roles.includes('owner')" @click="toggleRole(user, 'admin')">
-            {{ user.roles.includes("admin") ? "Remove admin" : "Make admin" }}
+            {{ user.roles.includes("admin") ? t.removeAdmin : t.makeAdmin }}
           </button>
-          <button v-if="!user.banned_at" class="button button--secondary" type="button" :disabled="actionID === user.id || user.roles.includes('owner')" @click="banUser(user)">Ban</button>
-          <button v-else class="button button--secondary" type="button" :disabled="actionID === user.id" @click="unbanUser(user)">Unban</button>
+          <button v-if="!user.banned_at" class="button button--secondary" type="button" :disabled="actionID === user.id || user.roles.includes('owner')" @click="banUser(user)">{{ t.ban }}</button>
+          <button v-else class="button button--secondary" type="button" :disabled="actionID === user.id" @click="unbanUser(user)">{{ t.unban }}</button>
         </div>
       </article>
     </div>

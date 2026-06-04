@@ -4,8 +4,11 @@ import CatalogHeaderActions from "../../components/catalog/CatalogHeaderActions.
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { listCategories, listPublicContent, listTags } from "../../lib/api/content";
 import { PAGE_LIMITS } from "../../lib/config/runtime";
+import { ui } from "../../lib/i18n";
 import type { PublicContentItem, CursorPagination } from "../../lib/api/types";
 
+const locale = "en";
+const t = ui[locale];
 const searchParams = Astro.url.searchParams;
 const query = searchParams.get("q")?.trim() ?? "";
 const activeTags = parseTags(searchParams.get("tags"));
@@ -42,7 +45,7 @@ try {
   items = contentData.data;
   pagination = contentData.pagination;
 } catch (caught) {
-  error = caught instanceof Error ? caught.message : "Failed to load catalog data.";
+  error = caught instanceof Error ? caught.message : t.catalog.unavailableTitle;
 }
 
 function parseTags(raw: string | null): string[] {
@@ -56,8 +59,8 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
 ---
 
 <BaseLayout
-  title="Catalog - BeeBa"
-  description="Browse Basis / VR worlds, avatars, props, and prefabs once they pass scan and moderation."
+  title={t.catalog.title}
+  description={t.catalog.description}
   canonicalPath="/catalog"
 >
   <CatalogHeaderActions
@@ -67,6 +70,7 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
     activeTags={activeTags}
     sort={sort}
     includeNSFW={includeNSFW}
+    locale={locale}
   />
   <CatalogView
     items={items}
@@ -78,5 +82,6 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
     sort={sort}
     includeNSFW={includeNSFW}
     error={error}
+    locale={locale}
   />
 </BaseLayout>

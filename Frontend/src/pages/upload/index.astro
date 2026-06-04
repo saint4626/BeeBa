@@ -2,8 +2,11 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import UploadApp from "../../components/upload/UploadApp.vue";
 import { getServerAPIBaseURL } from "../../lib/api/client";
+import { ui } from "../../lib/i18n";
 import type { PublicUser } from "../../lib/api/types";
 
+const locale = "en";
+const t = ui[locale];
 const loginHref = `/login?next=${encodeURIComponent("/upload")}`;
 let user: PublicUser | null = null;
 
@@ -29,21 +32,21 @@ if (!user) {
 ---
 
 <BaseLayout
-  title="Upload - BeeBa"
-  description="Upload Basis .bee content into BeeBa's quarantine, scan, and moderation pipeline."
+  title={t.upload.title}
+  description={t.upload.description}
   canonicalPath="/upload"
 >
   <div class="page-container">
     <section class="upload-head" aria-labelledby="upload-title">
       <div>
-        <p class="eyebrow">Upload pipeline</p>
-        <h1 id="upload-title">Upload Basis content.</h1>
+        <p class="eyebrow">{t.upload.eyebrow}</p>
+        <h1 id="upload-title">{t.upload.heading}</h1>
         <p class="lead">
-          Add a `.bee` package, a primary preview image, and the metadata needed for the owner library or public catalog.
+          {t.upload.lead}
         </p>
       </div>
     </section>
 
-    <UploadApp client:load initialUser={user} loginHref={loginHref} />
+    <UploadApp client:load initialUser={user} loginHref={loginHref} locale={locale} />
   </div>
 </BaseLayout>

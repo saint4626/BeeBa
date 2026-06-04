@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
 const owner = useOwnerStore();
+const props = withDefaults(defineProps<{ locale?: Locale }>(), { locale: "en" });
+const t = ui[props.locale].profile;
 const title = ref("");
 const description = ref("");
 const visibility = ref<"public" | "private">("public");
@@ -27,12 +30,12 @@ watch(
 
 async function submitMetadata() {
   if (!owner.selectedItem) {
-    showToast("Select content before editing metadata.", "info");
+    showToast(t.selectBeforeEdit, "info");
     return;
   }
   const normalizedTitle = title.value.trim();
   if (!normalizedTitle) {
-    showToast("Title is required.", "error");
+    showToast(t.titleRequired, "error");
     return;
   }
   const tagList = tags.value
@@ -50,7 +53,7 @@ async function submitMetadata() {
       tags: tagList,
     });
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Metadata update failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.metadataFailed, "error");
   } finally {
     saving.value = false;
   }
@@ -60,29 +63,29 @@ async function submitMetadata() {
 <template>
   <section class="panel profile-metadata-panel" aria-labelledby="metadata-title">
     <div class="panel__head">
-      <p class="eyebrow">Package metadata</p>
-      <h2 id="metadata-title">Edit listing</h2>
+      <p class="eyebrow">{{ t.metadataEyebrow }}</p>
+      <h2 id="metadata-title">{{ t.editListing }}</h2>
     </div>
 
-    <div v-if="!owner.selectedItem" class="message message--warning">Select an owned package before editing metadata.</div>
+    <div v-if="!owner.selectedItem" class="message message--warning">{{ t.selectBeforeEdit }}</div>
 
     <form class="form-grid" :class="{ 'form-grid--disabled': !owner.selectedItem }" @submit.prevent="submitMetadata">
       <label class="field">
-        Title
+        {{ t.titleLabel }}
         <input v-model="title" type="text" maxlength="140" :disabled="disabled" required />
       </label>
 
       <label class="field">
-        Description
+        {{ t.descriptionLabel }}
         <textarea v-model="description" maxlength="4000" rows="5" :disabled="disabled"></textarea>
       </label>
 
       <div class="form-row">
         <label class="field">
-          Visibility
+          {{ t.visibilityLabel }}
           <select v-model="visibility" :disabled="disabled">
-            <option value="public">Public</option>
-            <option value="private">Private</option>
+            <option value="public">{{ t.publicVisibility }}</option>
+            <option value="private">{{ t.privateVisibility }}</option>
           </select>
         </label>
         <label class="check-row">
@@ -92,12 +95,12 @@ async function submitMetadata() {
       </div>
 
       <label class="field">
-        Tags
-        <input v-model="tags" type="text" maxlength="700" :disabled="disabled" placeholder="world, quest, udon" />
+        {{ t.tagsLabel }}
+        <input v-model="tags" type="text" maxlength="700" :disabled="disabled" :placeholder="t.tagsPlaceholder" />
       </label>
 
       <button class="button button--primary" type="submit" :disabled="disabled">
-        {{ saving ? "Saving..." : "Save metadata" }}
+        {{ saving ? ui[props.locale].common.saving : t.saveMetadata }}
       </button>
     </form>
   </section>

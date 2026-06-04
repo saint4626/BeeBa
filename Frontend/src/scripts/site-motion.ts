@@ -680,7 +680,7 @@ function initCopyButtons(): Cleanup {
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
-        const copiedLabel = button.dataset.copyLabel ?? "Copied";
+        const copiedLabel = button.dataset.copyLabel ?? localizedCopyFallback("success");
         button.classList.add("site-footer__icon-link--copied");
         button.setAttribute("aria-label", copiedLabel);
         button.setAttribute("title", copiedLabel);
@@ -693,7 +693,7 @@ function initCopyButtons(): Cleanup {
         }, 1400);
       } catch {
         button.setAttribute("title", text);
-        showToast("Could not copy to clipboard", { kind: "error" });
+        showToast(localizedCopyFallback("error"), { kind: "error" });
       }
     };
     button.addEventListener("click", onClick);
@@ -704,6 +704,14 @@ function initCopyButtons(): Cleanup {
   });
 
   return () => cleanups.forEach((cleanup) => cleanup());
+}
+
+function localizedCopyFallback(kind: "success" | "error") {
+  const isRussian = document.documentElement.lang === "ru";
+  if (kind === "success") {
+    return isRussian ? "Скопировано" : "Copied";
+  }
+  return isRussian ? "Не удалось скопировать в буфер обмена" : "Could not copy to clipboard";
 }
 
 function initContentCarousels(): Cleanup {

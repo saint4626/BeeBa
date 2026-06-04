@@ -17,6 +17,7 @@ import SocialModerationPanel from "./SocialModerationPanel.vue";
 import TaxonomyManagementPanel from "./TaxonomyManagementPanel.vue";
 import UserManagementPanel from "./UserManagementPanel.vue";
 import { clearAuthSession } from "../../lib/auth/session";
+import { ui, type Locale } from "../../lib/i18n";
 import type { ModerationQueueItem } from "../../lib/api/types";
 import { BYTE_UNITS } from "../../lib/config/runtime";
 import { navigateWithPageProgress } from "../../lib/ui/page-progress";
@@ -33,6 +34,9 @@ interface AdminTab {
 }
 
 const admin = useAdminStore();
+const props = withDefaults(defineProps<{ locale?: Locale }>(), { locale: "en" });
+const locale = props.locale;
+const t = ui[locale].admin;
 const {
   ready,
   activeTab,
@@ -47,7 +51,7 @@ const {
 } = storeToRefs(admin);
 
 const accessToken = "";
-const loginHref = `/login?next=${encodeURIComponent("/admin/moderation")}`;
+const loginHref = `${t.loginPath}?next=${encodeURIComponent(locale === "ru" ? "/ru/admin/moderation" : "/admin/moderation")}`;
 const refreshNonces = reactive<Record<AdminTabID, number>>({
   content: 0,
   social: 0,
@@ -89,50 +93,50 @@ const Icon = defineComponent({
 const allTabs: AdminTab[] = [
   {
     id: "content",
-    label: "Content",
-    description: "Approve, reject, or hide uploaded packages",
+    label: t.content,
+    description: t.contentDescription,
     icon: ClipboardCheck as IconNode,
     access: "moderation",
   },
   {
     id: "social",
-    label: "Community",
-    description: "Review comments and reports",
+    label: t.community,
+    description: t.communityDescription,
     icon: MessageSquareWarning as IconNode,
     access: "moderation",
   },
   {
     id: "users",
-    label: "Users",
-    description: "Roles, bans, and account state",
+    label: t.users,
+    description: t.usersDescription,
     icon: UsersRound as IconNode,
     access: "admin",
   },
   {
     id: "files",
-    label: "Files",
-    description: "Scan state and rescan operations",
+    label: t.files,
+    description: t.filesDescription,
     icon: HardDrive as IconNode,
     access: "admin",
   },
   {
     id: "jobs",
-    label: "Jobs",
-    description: "Worker queues and retries",
+    label: t.jobs,
+    description: t.jobsDescription,
     icon: Cpu as IconNode,
     access: "admin",
   },
   {
     id: "taxonomy",
-    label: "Taxonomy",
-    description: "Categories and tags",
+    label: t.taxonomy,
+    description: t.taxonomyDescription,
     icon: Tags as IconNode,
     access: "admin",
   },
   {
     id: "audit",
-    label: "Audit",
-    description: "Security and moderation history",
+    label: t.audit,
+    description: t.auditDescription,
     icon: ScrollText as IconNode,
     access: "admin",
   },
@@ -277,27 +281,27 @@ function canRestoreContent(item: ModerationQueueItem) {
 
 function restoreBlockedReason(item: ModerationQueueItem) {
   if (item.status !== "hidden" || item.scan_status === "clean") return "";
-  return "Clean scan required before restore.";
+  return t.restoreBlocked;
 }
 
 </script>
 
 <template>
   <div class="admin-shell">
-    <div v-if="!ready" class="message" aria-live="polite">Checking admin session...</div>
+    <div v-if="!ready" class="message" aria-live="polite">{{ t.checkingSession }}</div>
     <div v-if="ready && !isAuthorized" class="message message--warning">
-      Login with a moderator, admin, or owner account to load moderation tools.
+      {{ t.unauthorized }}
     </div>
     <section v-if="isAuthorized" class="admin-workspace" aria-labelledby="admin-workspace-title">
       <div class="admin-workspace__head">
         <div>
-          <p class="eyebrow">Workspace</p>
+          <p class="eyebrow">{{ t.workspace }}</p>
           <h2 id="admin-workspace-title">{{ activeTabMeta?.label }}</h2>
           <p>{{ activeTabMeta?.description }}</p>
         </div>
       </div>
 
-      <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+      <nav class="admin-tabs" role="tablist" :aria-label="t.tabsLabel">
         <button
           v-for="tab in visibleTabs"
           :key="tab.id"
@@ -333,36 +337,36 @@ function restoreBlockedReason(item: ModerationQueueItem) {
         <section v-if="activeTab === 'content'" class="panel panel--wide" aria-labelledby="queue-title">
           <div class="panel__head panel__head--row">
             <div>
-              <p class="eyebrow">Queue</p>
-              <h2 id="queue-title">Content moderation</h2>
-              <p>Approve clean packages, reject invalid uploads, or hide already published content.</p>
+              <p class="eyebrow">{{ t.queue }}</p>
+              <h2 id="queue-title">{{ t.contentModeration }}</h2>
+              <p>{{ t.contentModerationCopy }}</p>
             </div>
-            <button class="button button--secondary" type="button" :disabled="tabLoading.content || !isAuthorized" @click="refreshQueue()">Refresh</button>
+            <button class="button button--secondary" type="button" :disabled="tabLoading.content || !isAuthorized" @click="refreshQueue()">{{ t.refresh }}</button>
           </div>
 
           <div class="admin-controls">
             <label class="field">
-              Status
+              {{ t.status }}
               <select v-model="contentStatusFilter" :disabled="!isAuthorized" @change="refreshQueue()">
-                <option value="">Pending moderation + scan failed</option>
-                <option value="pending_moderation">Pending moderation</option>
-                <option value="scan_failed">Scan failed</option>
-                <option value="published">Published</option>
-                <option value="hidden">Hidden</option>
-                <option value="rejected">Rejected</option>
+                <option value="">{{ t.defaultStatusFilter }}</option>
+                <option value="pending_moderation">{{ t.pendingModeration }}</option>
+                <option value="scan_failed">{{ t.scanFailed }}</option>
+                <option value="published">{{ t.published }}</option>
+                <option value="hidden">{{ t.hidden }}</option>
+                <option value="rejected">{{ t.rejected }}</option>
               </select>
             </label>
             <label class="field">
-              Reason for reject/hide/restore
+              {{ t.reason }}
               <input v-model="contentReason" type="text" maxlength="500" :disabled="!isAuthorized" />
             </label>
           </div>
 
           <div v-if="contentQueue.length === 0" class="empty-state">
-            <span class="empty-state__badge">No queue items</span>
+            <span class="empty-state__badge">{{ t.noQueueItems }}</span>
             <div>
-              <h2>No content matches this queue filter.</h2>
-              <p>Valid uploads appear here after worker scan, before publication.</p>
+              <h2>{{ t.noContentMatches }}</h2>
+              <p>{{ t.queueCopy }}</p>
             </div>
           </div>
 
@@ -375,18 +379,18 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   <span v-if="item.nsfw" class="badge badge--nsfw">NSFW</span>
                 </div>
                 <h3>{{ item.title }}</h3>
-                <p>{{ item.description || "No description provided." }}</p>
+                <p>{{ item.description || t.noDescription }}</p>
                 <dl class="meta-grid">
                   <div>
-                    <dt>Status</dt>
+                    <dt>{{ t.status }}</dt>
                     <dd>{{ item.status }}</dd>
                   </div>
                   <div>
-                    <dt>Scan</dt>
+                    <dt>{{ t.scan }}</dt>
                     <dd>{{ item.scan_status || "n/a" }}</dd>
                   </div>
                   <div>
-                    <dt>File</dt>
+                    <dt>{{ t.file }}</dt>
                     <dd>{{ formatBytes(item.file_size) }}</dd>
                   </div>
                 </dl>
@@ -400,7 +404,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   :disabled="contentActionID === item.content_id"
                   @click="admin.approve(item)"
                 >
-                  Approve
+                  {{ t.approve }}
                 </button>
                 <button
                   v-if="canRejectContent(item)"
@@ -409,7 +413,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   :disabled="contentActionID === item.content_id"
                   @click="admin.reject(item)"
                 >
-                  Reject
+                  {{ t.reject }}
                 </button>
                 <button
                   v-if="canHideContent(item)"
@@ -418,7 +422,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   :disabled="contentActionID === item.content_id"
                   @click="admin.hide(item)"
                 >
-                  Hide
+                  {{ t.hide }}
                 </button>
                 <button
                   v-if="canRestoreContent(item)"
@@ -427,7 +431,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   :disabled="contentActionID === item.content_id"
                   @click="admin.restore(item)"
                 >
-                  Restore
+                  {{ t.restore }}
                 </button>
                 <button
                   v-else-if="restoreBlockedReason(item)"
@@ -436,7 +440,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
                   disabled
                   :title="restoreBlockedReason(item)"
                 >
-                  Clean scan required
+                  {{ t.cleanScanRequired }}
                 </button>
               </div>
             </article>
@@ -448,6 +452,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canModerate"
           :refresh-nonce="refreshNonces.social"
+          :locale="locale"
           @count="handlePanelCount('social', $event)"
         />
         <UserManagementPanel
@@ -455,6 +460,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canAdminister"
           :refresh-nonce="refreshNonces.users"
+          :locale="locale"
           @count="handlePanelCount('users', $event)"
         />
         <FileOperationsPanel
@@ -462,6 +468,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canAdminister"
           :refresh-nonce="refreshNonces.files"
+          :locale="locale"
           @count="handlePanelCount('files', $event)"
         />
         <JobOperationsPanel
@@ -469,6 +476,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canAdminister"
           :refresh-nonce="refreshNonces.jobs"
+          :locale="locale"
           @count="handlePanelCount('jobs', $event)"
         />
         <TaxonomyManagementPanel
@@ -476,6 +484,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canAdminister"
           :refresh-nonce="refreshNonces.taxonomy"
+          :locale="locale"
           @count="handlePanelCount('taxonomy', $event)"
         />
         <AuditLogPanel
@@ -483,6 +492,7 @@ function restoreBlockedReason(item: ModerationQueueItem) {
           :access-token="accessToken"
           :is-authorized="canAdminister"
           :refresh-nonce="refreshNonces.audit"
+          :locale="locale"
           @count="handlePanelCount('audit', $event)"
         />
       </section>

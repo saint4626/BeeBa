@@ -3,6 +3,7 @@ import { defineComponent, h, onMounted, ref, type PropType } from "vue";
 import { Flag, Heart, MessageSquare, Send, X } from "lucide";
 import { readAuthSession } from "../../lib/auth/session";
 import { createComment, likeContent, listComments, reportContent, unlikeContent } from "../../lib/api/social";
+import { ui, type Locale } from "../../lib/i18n";
 import type { PublicComment } from "../../lib/api/types";
 import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
@@ -46,8 +47,11 @@ const props = defineProps<{
   contentId: string;
   initialLikes: number;
   loginHref: string;
+  locale?: Locale;
 }>();
 
+const locale = props.locale ?? "en";
+const t = ui[locale].social;
 const isAuthenticated = ref(false);
 const comments = ref<PublicComment[]>([]);
 const body = ref("");
@@ -74,7 +78,7 @@ async function refreshComments() {
   try {
     comments.value = await listComments(props.contentId);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load comments.";
+    error.value = caught instanceof Error ? caught.message : t.commentsFailed;
   }
 }
 
@@ -92,7 +96,7 @@ async function toggleLike() {
     liked.value = result.liked;
     likes.value = result.likes_count;
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Like action failed.";
+    error.value = caught instanceof Error ? caught.message : t.likeFailed;
   } finally {
     loading.value = false;
   }
@@ -102,7 +106,7 @@ async function submitComment() {
   if (!isAuthenticated.value) return;
   const text = body.value.trim();
   if (!text) {
-    error.value = "Comment text is required.";
+    error.value = t.commentRequired;
     return;
   }
   loading.value = true;
@@ -113,13 +117,13 @@ async function submitComment() {
     commentDialogOpen.value = false;
     if (comment.status === "visible") {
       comments.value = [comment, ...comments.value];
-      showToast("Comment published.", "success");
+      showToast(t.commentPublished, "success");
     } else {
       await refreshComments();
-      showToast("Comment queued for review.", "success");
+      showToast(t.commentQueued, "success");
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Comment failed.";
+    error.value = caught instanceof Error ? caught.message : t.commentFailed;
     showToast(error.value, "error");
   } finally {
     loading.value = false;
@@ -130,7 +134,7 @@ async function submitReport() {
   if (!isAuthenticated.value) return;
   const reportReason = reason.value.trim();
   if (!reportReason) {
-    error.value = "Report reason is required.";
+    error.value = t.reportRequired;
     return;
   }
   loading.value = true;
@@ -143,9 +147,9 @@ async function submitReport() {
     reason.value = "";
     details.value = "";
     reportDialogOpen.value = false;
-    showToast("Report submitted.", "success");
+    showToast(t.reportSubmitted, "success");
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Report failed.";
+    error.value = caught instanceof Error ? caught.message : t.reportFailed;
     showToast(error.value, "error");
   } finally {
     loading.value = false;
@@ -185,30 +189,30 @@ function closeReportDialog() {
   <section class="social-panel" aria-labelledby="social-title">
     <div class="discussion-toolbar">
       <div class="discussion-titleblock">
-        <p class="eyebrow">Community</p>
-        <h2 id="social-title">Discussion</h2>
-        <span>{{ comments.length }} visible comments</span>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="social-title">{{ t.title }}</h2>
+        <span>{{ comments.length }} {{ t.visibleComments }}</span>
       </div>
       <div class="discussion-actions">
         <button class="button button--secondary discussion-action" type="button" :disabled="loading" @click="openCommentDialog">
           <Icon :node="MessageSquareIcon" :size="15" />
-          <span>Add Comment</span>
+          <span>{{ t.addComment }}</span>
         </button>
         <button class="button button--secondary discussion-action" type="button" :disabled="loading" @click="toggleLike">
           <Icon :node="HeartIcon" :size="15" />
-          <span>{{ liked ? "Unlike" : "Like" }}</span>
+          <span>{{ liked ? t.unlike : t.like }}</span>
           <strong>{{ likes }}</strong>
         </button>
         <button class="button button--ghost discussion-action" type="button" :disabled="loading" @click="openReportDialog">
           <Icon :node="FlagIcon" :size="15" />
-          <span>Report</span>
+          <span>{{ t.report }}</span>
         </button>
       </div>
     </div>
 
     <div v-if="!isAuthenticated" class="social-auth-cta">
-      <p>Sign in to like, comment, or report this asset.</p>
-      <a class="button button--secondary" :href="loginHref">Sign in</a>
+      <p>{{ t.signInCopy }}</p>
+      <a class="button button--secondary" :href="loginHref">{{ t.signIn }}</a>
     </div>
 
     <div v-if="error" class="message message--error">{{ error }}</div>
@@ -219,23 +223,23 @@ function closeReportDialog() {
           <span class="comment-avatar">{{ (comment.display_name || comment.username).slice(0, 2).toUpperCase() }}</span>
           <div>
             <strong>{{ comment.display_name || comment.username }}</strong>
-            <span>Visible comment</span>
+            <span>{{ t.visibleComment }}</span>
           </div>
         </div>
         <p>{{ comment.body }}</p>
       </article>
     </div>
     <div v-else class="discussion-empty">
-      <strong>No comments yet</strong>
-      <p>Be the first to start the discussion.</p>
+      <strong>{{ t.emptyTitle }}</strong>
+      <p>{{ t.emptyCopy }}</p>
     </div>
 
     <Teleport v-if="mounted" to="body">
       <div v-if="commentDialogOpen" class="modal-backdrop" role="presentation" @click.self="closeCommentDialog">
         <section class="comment-modal" role="dialog" aria-modal="true" aria-labelledby="comment-modal-title">
           <div class="comment-modal__head">
-            <h3 id="comment-modal-title">Add a comment</h3>
-            <button type="button" aria-label="Close comment dialog" @click="closeCommentDialog">
+            <h3 id="comment-modal-title">{{ t.addCommentTitle }}</h3>
+            <button type="button" :aria-label="t.closeComment" @click="closeCommentDialog">
               <Icon :node="CloseIcon" :size="18" />
             </button>
           </div>
@@ -245,14 +249,14 @@ function closeReportDialog() {
               rows="5"
               maxlength="2000"
               :disabled="loading"
-              placeholder="Type your thoughts..."
+              :placeholder="t.thoughtsPlaceholder"
               autofocus
             ></textarea>
             <div class="comment-modal__actions">
-              <button class="button button--secondary" type="button" :disabled="loading" @click="closeCommentDialog">Cancel</button>
+              <button class="button button--secondary" type="button" :disabled="loading" @click="closeCommentDialog">{{ ui[locale].common.cancel }}</button>
               <button class="button button--primary" type="submit" :disabled="loading">
                 <Icon :node="SendIcon" :size="15" />
-                <span>Comment</span>
+                <span>{{ t.commentAction }}</span>
               </button>
             </div>
           </form>
@@ -262,25 +266,25 @@ function closeReportDialog() {
       <div v-if="reportDialogOpen" class="modal-backdrop" role="presentation" @click.self="closeReportDialog">
         <section class="comment-modal comment-modal--narrow" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
           <div class="comment-modal__head">
-            <h3 id="report-modal-title">Report asset</h3>
-            <button type="button" aria-label="Close report dialog" @click="closeReportDialog">
+            <h3 id="report-modal-title">{{ t.reportTitle }}</h3>
+            <button type="button" :aria-label="t.closeReport" @click="closeReportDialog">
               <Icon :node="CloseIcon" :size="18" />
             </button>
           </div>
           <form class="comment-composer" @submit.prevent="submitReport">
             <label class="field">
-              Report reason
+              {{ t.reportReason }}
               <input v-model="reason" type="text" maxlength="120" :disabled="loading" />
             </label>
             <label class="field">
-              Details
+              {{ t.details }}
               <textarea v-model="details" rows="4" maxlength="2000" :disabled="loading"></textarea>
             </label>
             <div class="comment-modal__actions">
-              <button class="button button--secondary" type="button" :disabled="loading" @click="closeReportDialog">Cancel</button>
+              <button class="button button--secondary" type="button" :disabled="loading" @click="closeReportDialog">{{ ui[locale].common.cancel }}</button>
               <button class="button button--primary" type="submit" :disabled="loading">
                 <Icon :node="FlagIcon" :size="15" />
-                <span>Report</span>
+                <span>{{ t.report }}</span>
               </button>
             </div>
           </form>

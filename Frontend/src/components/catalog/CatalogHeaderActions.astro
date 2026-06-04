@@ -1,5 +1,6 @@
 ---
 import type { CatalogTag, Category } from "../../lib/api/types";
+import { type Locale, ui } from "../../lib/i18n";
 
 interface Props {
   tags: CatalogTag[];
@@ -9,6 +10,7 @@ interface Props {
   includeNSFW: boolean;
   activeCategory?: Category["slug"];
   baseCatalogPath?: string;
+  locale?: Locale;
 }
 
 const {
@@ -19,10 +21,12 @@ const {
   includeNSFW,
   activeCategory,
   baseCatalogPath = "/catalog",
+  locale = "en",
 } = Astro.props;
 
+const t = ui[locale].catalog;
 const normalizedTags = new Set(activeTags);
-const activeSortLabel = sort === "likes" ? "Likes" : sort === "downloads" ? "Downloads" : "Newest";
+const activeSortLabel = sort === "likes" ? t.likes : sort === "downloads" ? t.downloads : t.newest;
 
 const iconPaths = {
   sort: "M11 5h10M11 12h7M11 19h4M4 19V5m0 14-3-3m3 3 3-3",
@@ -68,29 +72,29 @@ function nsfwHref() {
 
 <div class="catalog-actions">
   <details class="catalog-menu" data-ui-dropdown>
-    <summary aria-label="Sort catalog">
+    <summary aria-label={t.sortLabel}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d={iconPaths.sort}></path></svg>
       <span>{activeSortLabel}</span>
     </summary>
     <div class="catalog-menu__content">
-      <a class:list={[sort === "newest" && "active"]} href={sortHref("newest")}>Newest</a>
-      <a class:list={[sort === "likes" && "active"]} href={sortHref("likes")}>Likes</a>
-      <a class:list={[sort === "downloads" && "active"]} href={sortHref("downloads")}>Downloads</a>
+      <a class:list={[sort === "newest" && "active"]} href={sortHref("newest")}>{t.newest}</a>
+      <a class:list={[sort === "likes" && "active"]} href={sortHref("likes")}>{t.likes}</a>
+      <a class:list={[sort === "downloads" && "active"]} href={sortHref("downloads")}>{t.downloads}</a>
     </div>
   </details>
   <details class="catalog-menu catalog-menu--filter" data-ui-dropdown>
-    <summary aria-label="Filter catalog">
+    <summary aria-label={t.filterLabel}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d={iconPaths.filter}></path></svg>
-      <span>Filters</span>
+      <span>{t.filters}</span>
     </summary>
     <div class="catalog-menu__content">
       <a class:list={["catalog-filter-toggle", includeNSFW && "active"]} href={nsfwHref()}>
         <span>NSFW</span>
-        <span>{includeNSFW ? "On" : "Off"}</span>
+        <span>{includeNSFW ? t.on : t.off}</span>
       </a>
       {tags.length > 0 && (
         <>
-          <span class="catalog-menu__label">Tags</span>
+          <span class="catalog-menu__label">{t.tags}</span>
           {tags.map((tag) => (
             <a class:list={[normalizedTags.has(tag.slug) && "active"]} href={tagHref(tag.slug)}>
               <span>{tag.name}</span>

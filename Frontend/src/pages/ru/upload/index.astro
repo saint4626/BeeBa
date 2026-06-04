@@ -2,8 +2,11 @@
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import UploadApp from "../../../components/upload/UploadApp.vue";
 import { getServerAPIBaseURL } from "../../../lib/api/client";
+import { ui } from "../../../lib/i18n";
 import type { PublicUser } from "../../../lib/api/types";
 
+const locale = "ru";
+const t = ui[locale];
 const loginHref = `/ru/login?next=${encodeURIComponent("/ru/upload")}`;
 let user: PublicUser | null = null;
 
@@ -29,21 +32,19 @@ if (!user) {
 ---
 
 <BaseLayout
-  title="Загрузка - BeeBa"
-  description="Загрузка Basis .bee контента в карантин, проверку и модерацию BeeBa."
+  title={t.upload.title}
+  description={t.upload.description}
   canonicalPath="/ru/upload"
 >
   <div class="page-container">
     <section class="upload-head" aria-labelledby="upload-title">
       <div>
-        <p class="eyebrow">Upload pipeline</p>
-        <h1 id="upload-title">Файл попадает в карантин до публикации.</h1>
-        <p class="lead">
-          UI проверяет расширение .bee для удобства, но безопасность, hash, scan status и модерация всегда контролируются backend.
-        </p>
+        <p class="eyebrow">{t.upload.eyebrow}</p>
+        <h1 id="upload-title">{t.upload.heading}</h1>
+        <p class="lead">{t.upload.lead}</p>
       </div>
     </section>
 
-    <UploadApp client:load initialUser={user} loginHref={loginHref} />
+    <UploadApp client:load initialUser={user} loginHref={loginHref} locale={locale} />
   </div>
 </BaseLayout>

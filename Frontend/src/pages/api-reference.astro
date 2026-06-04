@@ -1,13 +1,17 @@
 ---
+import { ui } from "../lib/i18n";
+
 const openApiUrl = "/openapi.yaml";
-const title = "BeeBa API Reference";
-const description = "Interactive OpenAPI reference for the BeeBa Basis / VR content catalog API.";
+const locale = "en";
+const t = ui[locale].apiReference;
+const title = t.title;
+const description = t.description;
 const site = Astro.site ?? new URL("http://localhost:4321");
 const canonical = new URL("/api-reference", site);
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -57,7 +61,7 @@ const canonical = new URL("/api-reference", site);
 
       createApiReference("#scalar-api-reference", {
         url: openApiUrl,
-        pageTitle: "BeeBa API Reference",
+          pageTitle: "BeeBa API Reference",
         theme: "solarized",
         darkMode: true,
         forceDarkModeState: "dark",

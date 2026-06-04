@@ -8,12 +8,14 @@ import {
   reviewReport,
 } from "../../lib/api/admin";
 import type { ModerationCommentItem, ModerationReportItem } from "../../lib/api/types";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
   accessToken: string;
   isAuthorized: boolean;
   refreshNonce?: number;
+  locale?: Locale;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +23,9 @@ const emit = defineEmits<{
 }>();
 
 const commentStatus = ref("visible");
+const locale = props.locale ?? "en";
+const t = ui[locale].adminPanels.socialModeration;
+const common = ui[locale].adminPanels.common;
 const reportStatus = ref("");
 const commentReason = ref("");
 const reportReason = ref("");
@@ -54,7 +59,7 @@ async function refreshSocialQueues(silent = false) {
     reports.value = reportItems;
     emit("count", comments.value.length + reports.value.length);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load social moderation queues.";
+    error.value = caught instanceof Error ? caught.message : t.loadFailed;
     emit("count", comments.value.length + reports.value.length);
     if (!silent) {
       showToast(error.value, "error");
@@ -70,10 +75,10 @@ async function approveCommentItem(item: ModerationCommentItem) {
   error.value = "";
   try {
     await approveComment(props.accessToken, item.comment_id);
-    showToast("Comment approved.", "success");
+    showToast(t.commentApproved, "success");
     await refreshSocialQueues();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Comment approval failed.";
+    error.value = caught instanceof Error ? caught.message : t.commentApprovalFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -84,7 +89,7 @@ async function hideCommentItem(item: ModerationCommentItem) {
   if (!props.isAuthorized) return;
   const reason = commentReason.value.trim();
   if (!reason) {
-    error.value = "Reason is required for hiding comments.";
+    error.value = t.hideReasonRequired;
     showToast(error.value, "error");
     return;
   }
@@ -93,10 +98,10 @@ async function hideCommentItem(item: ModerationCommentItem) {
   try {
     await hideComment(props.accessToken, item.comment_id, reason);
     commentReason.value = "";
-    showToast("Comment hidden.", "success");
+    showToast(t.commentHidden, "success");
     await refreshSocialQueues();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Comment hide failed.";
+    error.value = caught instanceof Error ? caught.message : t.commentHideFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -107,7 +112,7 @@ async function setReportStatus(item: ModerationReportItem, status: "in_review" |
   if (!props.isAuthorized) return;
   const reason = reportReason.value.trim();
   if ((status === "resolved" || status === "rejected") && !reason) {
-    error.value = "Reason is required for closing reports.";
+    error.value = t.closeReasonRequired;
     return;
   }
   actionID.value = item.report_id;
@@ -117,10 +122,10 @@ async function setReportStatus(item: ModerationReportItem, status: "in_review" |
     if (status !== "in_review") {
       reportReason.value = "";
     }
-    showToast(`Report moved to ${status}.`, "success");
+    showToast(`${t.reportMovedPrefix} ${status}.`, "success");
     await refreshSocialQueues();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Report review failed.";
+    error.value = caught instanceof Error ? caught.message : t.reportReviewFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -133,52 +138,52 @@ async function setReportStatus(item: ModerationReportItem, status: "in_review" |
   <section class="panel panel--wide" aria-labelledby="social-queue-title">
     <div class="panel__head panel__head--row">
       <div>
-        <p class="eyebrow">Community queue</p>
-        <h2 id="social-queue-title">Comments and reports</h2>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="social-queue-title">{{ t.title }}</h2>
       </div>
       <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshSocialQueues()">
-        Refresh
+        {{ common.refresh }}
       </button>
     </div>
 
-    <div v-if="!isAuthorized" class="message message--warning">Login with a moderator, admin, or owner account to review community activity.</div>
+    <div v-if="!isAuthorized" class="message message--warning">{{ t.unauthorized }}</div>
 
     <div class="admin-controls">
       <label class="field">
-        Comment status
+        {{ t.commentStatus }}
         <select v-model="commentStatus" :disabled="!isAuthorized" @change="refreshSocialQueues()">
-          <option value="visible">Published</option>
-          <option value="pending_moderation">Needs review</option>
-          <option value="hidden">Hidden</option>
-          <option value="deleted">Deleted</option>
+          <option value="visible">{{ common.published }}</option>
+          <option value="pending_moderation">{{ t.needsReview }}</option>
+          <option value="hidden">{{ common.hidden }}</option>
+          <option value="deleted">{{ common.deleted }}</option>
         </select>
       </label>
       <label class="field">
-        Comment reason
+        {{ t.commentReason }}
         <input v-model="commentReason" type="text" maxlength="500" :disabled="!isAuthorized" />
       </label>
       <label class="field">
-        Report status
+        {{ t.reportStatus }}
         <select v-model="reportStatus" :disabled="!isAuthorized" @change="refreshSocialQueues()">
-          <option value="">Open + in review</option>
-          <option value="open">Open</option>
-          <option value="in_review">In review</option>
-          <option value="resolved">Resolved</option>
-          <option value="rejected">Rejected</option>
+          <option value="">{{ t.openInReview }}</option>
+          <option value="open">{{ common.open }}</option>
+          <option value="in_review">{{ common.inReview }}</option>
+          <option value="resolved">{{ common.resolved }}</option>
+          <option value="rejected">{{ common.rejected }}</option>
         </select>
       </label>
       <label class="field">
-        Report reason
+        {{ t.reportReason }}
         <input v-model="reportReason" type="text" maxlength="500" :disabled="!isAuthorized" />
       </label>
     </div>
 
     <div class="social-moderation-grid">
       <div class="moderation-column">
-        <h3>Comments</h3>
+        <h3>{{ t.comments }}</h3>
         <div v-if="comments.length === 0" class="empty-state empty-state--compact">
-          <span class="empty-state__badge">No comments</span>
-          <p>No comments match this filter.</p>
+          <span class="empty-state__badge">{{ t.noComments }}</span>
+          <p>{{ t.noCommentsCopy }}</p>
         </div>
         <template v-else>
           <article v-for="item in comments" :key="item.comment_id" class="moderation-item moderation-item--compact">
@@ -191,34 +196,34 @@ async function setReportStatus(item: ModerationReportItem, status: "in_review" |
               <p>{{ item.body }}</p>
             </div>
             <div class="moderation-actions">
-              <button v-if="item.status === 'pending_moderation'" class="button button--primary" type="button" :disabled="actionID === item.comment_id" @click="approveCommentItem(item)">Approve</button>
-              <button class="button button--secondary" type="button" :disabled="actionID === item.comment_id || !['pending_moderation', 'visible'].includes(item.status)" @click="hideCommentItem(item)">Hide</button>
+              <button v-if="item.status === 'pending_moderation'" class="button button--primary" type="button" :disabled="actionID === item.comment_id" @click="approveCommentItem(item)">{{ t.approve }}</button>
+              <button class="button button--secondary" type="button" :disabled="actionID === item.comment_id || !['pending_moderation', 'visible'].includes(item.status)" @click="hideCommentItem(item)">{{ t.hide }}</button>
             </div>
           </article>
         </template>
       </div>
 
       <div class="moderation-column">
-        <h3>Reports</h3>
+        <h3>{{ t.reports }}</h3>
         <div v-if="reports.length === 0" class="empty-state empty-state--compact">
-          <span class="empty-state__badge">No reports</span>
-          <p>No reports match this filter.</p>
+          <span class="empty-state__badge">{{ t.noReports }}</span>
+          <p>{{ t.noReportsCopy }}</p>
         </div>
         <template v-else>
           <article v-for="item in reports" :key="item.report_id" class="moderation-item moderation-item--compact">
             <div class="moderation-item__main">
               <div class="content-card__topline">
                 <span class="badge badge--bee">{{ item.status }}</span>
-                <span class="badge">{{ item.reporter_display_name || item.reporter_username || "anonymous" }}</span>
+                <span class="badge">{{ item.reporter_display_name || item.reporter_username || t.anonymous }}</span>
               </div>
               <h3>{{ item.content_title }}</h3>
               <p>{{ item.reason }}</p>
               <small v-if="item.details">{{ item.details }}</small>
             </div>
             <div class="moderation-actions">
-              <button class="button button--secondary" type="button" :disabled="actionID === item.report_id || item.status === 'in_review'" @click="setReportStatus(item, 'in_review')">Review</button>
-              <button class="button button--primary" type="button" :disabled="actionID === item.report_id || item.status === 'resolved'" @click="setReportStatus(item, 'resolved')">Resolve</button>
-              <button class="button button--secondary" type="button" :disabled="actionID === item.report_id || item.status === 'rejected'" @click="setReportStatus(item, 'rejected')">Reject</button>
+              <button class="button button--secondary" type="button" :disabled="actionID === item.report_id || item.status === 'in_review'" @click="setReportStatus(item, 'in_review')">{{ t.review }}</button>
+              <button class="button button--primary" type="button" :disabled="actionID === item.report_id || item.status === 'resolved'" @click="setReportStatus(item, 'resolved')">{{ t.resolve }}</button>
+              <button class="button button--secondary" type="button" :disabled="actionID === item.report_id || item.status === 'rejected'" @click="setReportStatus(item, 'rejected')">{{ t.reject }}</button>
             </div>
           </article>
         </template>

@@ -6,6 +6,7 @@ import OwnerContentDrawer from "./OwnerContentDrawer.vue";
 import OwnerContentPanel from "./OwnerContentPanel.vue";
 import SecurityPanel from "./SecurityPanel.vue";
 import { readAuthSession } from "../../lib/auth/session";
+import { ui, type Locale } from "../../lib/i18n";
 import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
@@ -14,6 +15,7 @@ import type { PublicUser } from "../../lib/api/types";
 const props = defineProps<{
   loginHref: string;
   initialUser: PublicUser;
+  locale?: Locale;
 }>();
 
 type ProfileTabID = "profile" | "content" | "security";
@@ -47,6 +49,8 @@ const Icon = defineComponent({
 });
 
 const owner = useOwnerStore();
+const locale = props.locale ?? "en";
+const t = ui[locale].profile;
 const ready = ref(false);
 const activeTab = ref<ProfileTabID>("profile");
 const isAllowed = computed(() => ready.value && owner.isAuthenticated);
@@ -54,23 +58,23 @@ const isAllowed = computed(() => ready.value && owner.isAuthenticated);
 const tabs = computed(() => [
   {
     id: "profile" as const,
-    label: "Profile",
-    description: "Public identity and avatar",
-    metric: owner.user?.avatar_image_id ? "Avatar set" : "No avatar",
+    label: t.tabProfile,
+    description: t.tabProfileDescription,
+    metric: owner.user?.avatar_image_id ? t.avatarSet : t.noAvatar,
     icon: UserRound as IconNode,
   },
   {
     id: "content" as const,
-    label: "Content",
-    description: "Packages and listing metadata",
-    metric: `${owner.items.length} items`,
+    label: t.tabContent,
+    description: t.tabContentDescription,
+    metric: `${owner.items.length} ${t.itemsSuffix}`,
     icon: Boxes as IconNode,
   },
   {
     id: "security" as const,
-    label: "Security",
-    description: "Email and password",
-    metric: owner.user?.email_verified_at ? "Verified" : "Pending",
+    label: t.tabSecurity,
+    description: t.tabSecurityDescription,
+    metric: owner.user?.email_verified_at ? t.verified : t.pending,
     icon: ShieldCheck as IconNode,
   },
 ]);
@@ -122,15 +126,15 @@ watch(
 
 <template>
   <div v-if="!ready" class="profile-access-state" aria-live="polite">
-    <span>Checking session...</span>
+    <span>{{ t.checkingSession }}</span>
   </div>
 
   <div v-else-if="!isAllowed" class="profile-access-state" aria-live="polite">
-    <span>Redirecting to sign in...</span>
+    <span>{{ t.redirecting }}</span>
   </div>
 
   <div v-else class="profile-shell">
-    <nav class="profile-tabs" role="tablist" aria-label="Profile sections">
+    <nav class="profile-tabs" role="tablist" :aria-label="t.tabsLabel">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -165,14 +169,14 @@ watch(
       aria-live="polite"
     >
       <div v-if="activeTab === 'profile'" class="profile-tab-panel__grid">
-        <AccountSettingsPanel />
+        <AccountSettingsPanel :locale="locale" />
       </div>
       <div v-else-if="activeTab === 'content'" class="profile-tab-panel__grid">
-        <OwnerContentPanel />
-        <OwnerContentDrawer />
+        <OwnerContentPanel :locale="locale" />
+        <OwnerContentDrawer :locale="locale" />
       </div>
       <div v-else class="profile-tab-panel__grid">
-        <SecurityPanel />
+        <SecurityPanel :locale="locale" />
       </div>
     </section>
   </div>

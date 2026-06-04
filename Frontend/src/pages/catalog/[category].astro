@@ -4,13 +4,16 @@ import CatalogHeaderActions from "../../components/catalog/CatalogHeaderActions.
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { listCategories, listPublicContent, listTags } from "../../lib/api/content";
 import { PAGE_LIMITS } from "../../lib/config/runtime";
+import { ui } from "../../lib/i18n";
 import type { Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
 
+const locale = "en";
+const t = ui[locale];
 const categoryLabels: Record<Category["slug"], string> = {
-  worlds: "Worlds",
-  avatars: "Avatars",
-  props: "Props",
-  prefabs: "Prefabs",
+  worlds: t.categories.worlds,
+  avatars: t.categories.avatars,
+  props: t.categories.props,
+  prefabs: t.categories.prefabs,
 };
 
 const { category } = Astro.params;
@@ -58,7 +61,7 @@ try {
     pagination = contentData.pagination;
   }
 } catch (caught) {
-  error = caught instanceof Error ? caught.message : "Failed to load category data.";
+  error = caught instanceof Error ? caught.message : t.catalog.unavailableTitle;
 }
 
 function parseTags(raw: string | null): string[] {
@@ -72,8 +75,8 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
 ---
 
 <BaseLayout
-  title={`${label ?? "Not found"} - BeeBa Catalog`}
-  description={label ? `Browse published Basis / VR ${label.toLowerCase()} after scan and moderation approval.` : "Catalog category not found."}
+  title={`${label ?? "Not found"} - ${t.catalog.categoryTitleSuffix}`}
+  description={label ? `${t.catalog.categoryDescriptionPrefix} ${label.toLowerCase()} ${t.catalog.categoryDescriptionSuffix}` : t.catalog.categoryNotFoundTitle}
   canonicalPath={`/catalog/${category}`}
 >
   {label && (
@@ -85,6 +88,7 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
       sort={sort}
       includeNSFW={includeNSFW}
       activeCategory={activeCategory}
+      locale={locale}
     />
   )}
   {label ? (
@@ -99,14 +103,15 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
       includeNSFW={includeNSFW}
       activeCategory={activeCategory}
       error={error}
+      locale={locale}
     />
   ) : (
     <div class="page-container">
       <div class="empty-state">
         <span class="empty-state__badge">404</span>
         <div>
-          <h1>Catalog category not found.</h1>
-          <p>Use Worlds, Avatars, Props, or Prefabs.</p>
+          <h1>{t.catalog.categoryNotFoundTitle}</h1>
+          <p>{t.catalog.categoryNotFoundCopy}</p>
         </div>
       </div>
     </div>

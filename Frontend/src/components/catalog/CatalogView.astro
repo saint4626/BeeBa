@@ -1,6 +1,7 @@
 ---
 import CatalogFeed from "./CatalogFeed.vue";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
+import type { Locale } from "../../lib/i18n";
 import type { CatalogTag, Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
   baseCatalogPath?: string;
   categoryParamMode?: "path" | "query";
   author?: string;
+  locale?: Locale;
 }
 
 const {
@@ -33,6 +35,7 @@ const {
   baseCatalogPath = "/catalog",
   categoryParamMode = "path",
   author = "",
+  locale = "en",
 } = Astro.props;
 
 const publicAPIBaseURL = getPublicAPIBaseURL();
@@ -52,6 +55,7 @@ const publicAPIBaseURL = getPublicAPIBaseURL();
   baseCatalogPath={baseCatalogPath}
   categoryParamMode={categoryParamMode}
   author={author}
+  locale={locale}
   publicAPIBaseURL={publicAPIBaseURL}
   error={error}
 />

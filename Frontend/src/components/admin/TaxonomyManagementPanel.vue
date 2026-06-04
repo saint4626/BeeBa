@@ -8,12 +8,14 @@ import {
   updateAdminTag,
 } from "../../lib/api/admin";
 import type { AdminCategory, CatalogTag } from "../../lib/api/types";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
   accessToken: string;
   isAuthorized: boolean;
   refreshNonce?: number;
+  locale?: Locale;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +23,9 @@ const emit = defineEmits<{
 }>();
 
 const categories = ref<AdminCategory[]>([]);
+const locale = props.locale ?? "en";
+const t = ui[locale].adminPanels.taxonomy;
+const common = ui[locale].adminPanels.common;
 const tags = ref<CatalogTag[]>([]);
 const tagSlug = ref("");
 const tagName = ref("");
@@ -53,7 +58,7 @@ async function refreshTaxonomy(silent = false) {
     tags.value = nextTags;
     emit("count", categories.value.length + tags.value.length);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load taxonomy.";
+    error.value = caught instanceof Error ? caught.message : t.loadFailed;
     emit("count", categories.value.length + tags.value.length);
     if (!silent) {
       showToast(error.value, "error");
@@ -72,10 +77,10 @@ async function patchCategory(category: AdminCategory, input: { is_active?: boole
   error.value = "";
   try {
     await updateAdminCategory(props.accessToken, category.id, input);
-    showToast("Category updated.", "success");
+    showToast(t.categoryUpdated, "success");
     await refreshTaxonomy(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to update category.";
+    error.value = caught instanceof Error ? caught.message : t.categoryUpdateFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -94,10 +99,10 @@ async function createTag() {
     tagSlug.value = "";
     tagName.value = "";
     tagIsSystem.value = true;
-    showToast("Tag created.", "success");
+    showToast(t.tagCreated, "success");
     await refreshTaxonomy(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to create tag.";
+    error.value = caught instanceof Error ? caught.message : t.tagCreateFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -109,10 +114,10 @@ async function toggleSystemTag(tag: CatalogTag) {
   error.value = "";
   try {
     await updateAdminTag(props.accessToken, tag.id, { is_system: !tag.is_system });
-    showToast("Tag updated.", "success");
+    showToast(t.tagUpdated, "success");
     await refreshTaxonomy(true);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to update tag.";
+    error.value = caught instanceof Error ? caught.message : t.tagUpdateFailed;
     showToast(error.value, "error");
   } finally {
     actionID.value = "";
@@ -124,28 +129,28 @@ async function toggleSystemTag(tag: CatalogTag) {
   <section class="panel panel--wide" aria-labelledby="taxonomy-title">
     <div class="panel__head panel__head--row">
       <div>
-        <p class="eyebrow">Taxonomy</p>
-        <h2 id="taxonomy-title">Categories and tags</h2>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="taxonomy-title">{{ t.title }}</h2>
       </div>
-      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshTaxonomy()">Refresh</button>
+      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshTaxonomy()">{{ common.refresh }}</button>
     </div>
 
-    <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to manage taxonomy.</div>
+    <div v-if="!isAuthorized" class="message message--warning">{{ t.unauthorized }}</div>
 
     <div class="admin-controls">
       <label class="field">
-        Tag slug
+        {{ t.tagSlug }}
         <input v-model="tagSlug" type="text" maxlength="80" placeholder="basis-ready" :disabled="!isAuthorized" />
       </label>
       <label class="field">
-        Tag name
+        {{ t.tagName }}
         <input v-model="tagName" type="text" maxlength="80" placeholder="Basis Ready" :disabled="!isAuthorized" />
       </label>
       <label class="field field--inline">
         <input v-model="tagIsSystem" type="checkbox" :disabled="!isAuthorized" />
-        System tag
+        {{ t.systemTag }}
       </label>
-      <button class="button button--secondary" type="button" :disabled="!isAuthorized || actionID === 'create-tag'" @click="createTag">Create tag</button>
+      <button class="button button--secondary" type="button" :disabled="!isAuthorized || actionID === 'create-tag'" @click="createTag">{{ t.createTag }}</button>
     </div>
 
     <div class="moderation-list">
@@ -153,28 +158,28 @@ async function toggleSystemTag(tag: CatalogTag) {
         <div class="moderation-item__main">
           <div class="content-card__topline">
             <span class="badge badge--bee">{{ category.slug }}</span>
-            <span class="badge" :class="{ 'badge--nsfw': !category.is_active }">{{ category.is_active ? "active" : "inactive" }}</span>
+            <span class="badge" :class="{ 'badge--nsfw': !category.is_active }">{{ category.is_active ? common.active : common.inactive }}</span>
           </div>
           <h3>{{ category.name }}</h3>
           <p>{{ category.description }}</p>
           <dl class="meta-grid">
             <div>
-              <dt>Published</dt>
+              <dt>{{ common.published }}</dt>
               <dd>{{ category.published_count }}</dd>
             </div>
             <div>
-              <dt>Sort</dt>
+              <dt>{{ t.sort }}</dt>
               <dd>{{ category.sort_order }}</dd>
             </div>
             <div>
-              <dt>ID</dt>
+              <dt>{{ common.id }}</dt>
               <dd>{{ category.id }}</dd>
             </div>
           </dl>
         </div>
         <div class="moderation-actions">
           <button class="button button--secondary" type="button" :disabled="actionID === category.id" @click="toggleCategory(category)">
-            {{ category.is_active ? "Deactivate" : "Activate" }}
+            {{ category.is_active ? t.deactivate : t.activate }}
           </button>
         </div>
       </article>
@@ -185,14 +190,14 @@ async function toggleSystemTag(tag: CatalogTag) {
         <div class="moderation-item__main">
           <div class="content-card__topline">
             <span class="badge badge--bee">{{ tag.slug }}</span>
-            <span class="badge">{{ tag.is_system ? "system" : "user" }}</span>
+            <span class="badge">{{ tag.is_system ? common.system : common.user }}</span>
           </div>
           <h3>{{ tag.name }}</h3>
-          <p>{{ tag.published_count }} published items</p>
+          <p>{{ tag.published_count }} {{ t.publishedItems }}</p>
         </div>
         <div class="moderation-actions">
           <button class="button button--secondary" type="button" :disabled="actionID === tag.id" @click="toggleSystemTag(tag)">
-            {{ tag.is_system ? "Make user tag" : "Make system tag" }}
+            {{ tag.is_system ? t.makeUserTag : t.makeSystemTag }}
           </button>
         </div>
       </article>

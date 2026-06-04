@@ -5,6 +5,7 @@ import ContentMetadataEditor from "./ContentMetadataEditor.vue";
 import GalleryManager from "./GalleryManager.vue";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
 import { BYTE_UNITS } from "../../lib/config/runtime";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 import type { OwnerContentItem } from "../../lib/api/types";
@@ -47,6 +48,9 @@ const Icon = defineComponent({
 });
 
 const owner = useOwnerStore();
+const props = withDefaults(defineProps<{ locale?: Locale }>(), { locale: "en" });
+const locale = props.locale;
+const t = ui[locale].profile;
 const selected = computed(() => owner.selectedItem);
 const activePanel = ref<DrawerPanelID | null>(null);
 const pendingDeleteID = ref("");
@@ -65,7 +69,7 @@ function statusLabel(value?: string) {
 }
 
 function formatBytes(value?: number) {
-  if (!value) return "No file size";
+  if (!value) return t.noFileSize;
   if (value < BYTE_UNITS.kib) return `${value} B`;
   if (value < BYTE_UNITS.mib) return `${(value / BYTE_UNITS.kib).toFixed(1)} KB`;
   if (value < BYTE_UNITS.gib) return `${(value / BYTE_UNITS.mib).toFixed(1)} MB`;
@@ -85,30 +89,30 @@ async function copyText(value: string, label: string) {
     await navigator.clipboard.writeText(value);
     showToast(label, "success");
   } catch {
-    showToast("Could not copy to clipboard", "error");
+    showToast(ui[locale].common.copyFailed, "error");
   }
 }
 
 async function copyOwnerDownload(item: OwnerContentItem) {
   if (!canCopyOwnerDownload(item)) {
-    showToast("Download link is available after clean processing.", "info");
+    showToast(t.linkAfterProcessingToast, "info");
     return;
   }
-  await copyText(ownerDownloadURL(item), "Owner download link copied");
+  await copyText(ownerDownloadURL(item), t.ownerLinkCopied);
 }
 
 async function copyPassword(item: OwnerContentItem) {
   if (!item.unlock_password) {
-    showToast("No Basis password is stored for this package.", "info");
+    showToast(t.noPasswordStored, "info");
     return;
   }
-  await copyText(item.unlock_password, "Basis password copied");
+  await copyText(item.unlock_password, t.passwordCopied);
 }
 
 async function deleteItem(item: OwnerContentItem) {
   if (pendingDeleteID.value !== item.id) {
     pendingDeleteID.value = item.id;
-    showToast(`Click Delete again to remove "${item.title}".`, "info");
+    showToast(`${t.deleteAgainPrefix} "${item.title}"${t.deleteAgainSuffix}`, "info");
     return;
   }
   try {
@@ -139,7 +143,7 @@ function togglePanel(panelID: DrawerPanelID) {
   >
     <div class="profile-content-drawer__head">
       <div>
-        <p class="eyebrow">Selected package</p>
+        <p class="eyebrow">{{ t.selectedPackage }}</p>
         <h2 id="selected-content-title">{{ selected.title }}</h2>
         <p>
           {{ selected.category.name }} - {{ selected.visibility }} -
@@ -147,12 +151,12 @@ function togglePanel(panelID: DrawerPanelID) {
           {{ statusLabel(selected.status) }} / {{ statusLabel(selected.file?.scan_status) }}
         </p>
       </div>
-      <button class="owner-item__icon-action" type="button" aria-label="Close selected package panel" @click="closeDrawer">
+      <button class="owner-item__icon-action" type="button" :aria-label="t.closeSelected" @click="closeDrawer">
         <Icon :node="CloseIcon" />
       </button>
     </div>
 
-    <div class="profile-content-drawer__actions" aria-label="Owner package actions">
+    <div class="profile-content-drawer__actions" :aria-label="t.ownerActionsLabel">
       <button
         class="button button--primary"
         type="button"
@@ -160,7 +164,7 @@ function togglePanel(panelID: DrawerPanelID) {
         @click="togglePanel('details')"
       >
         <Icon :node="EditIcon" />
-        <span>{{ activePanel === "details" ? "Hide metadata" : "Edit metadata" }}</span>
+        <span>{{ activePanel === "details" ? t.hideMetadata : t.editMetadata }}</span>
       </button>
       <button
         class="button button--secondary"
@@ -169,31 +173,31 @@ function togglePanel(panelID: DrawerPanelID) {
         @click="togglePanel('media')"
       >
         <Icon :node="ImagesIcon" />
-        <span>{{ activePanel === "media" ? "Hide media" : "Manage media" }}</span>
+        <span>{{ activePanel === "media" ? t.hideMedia : t.manageMedia }}</span>
       </button>
       <button
         class="button button--secondary"
         type="button"
         :disabled="!canCopyOwnerDownload(selected)"
-        :title="canCopyOwnerDownload(selected) ? 'Copy owner download link' : 'Available after clean processing'"
+        :title="canCopyOwnerDownload(selected) ? t.copyOwnerLinkTitle : t.availableAfterProcessing"
         @click="copyOwnerDownload(selected)"
       >
         <Icon :node="LinkIcon" />
-        <span>Copy Basis link</span>
+        <span>{{ t.copyBasisLink }}</span>
       </button>
       <button
         class="button button--secondary"
         type="button"
         :disabled="!selected.unlock_password"
-        :title="selected.unlock_password ? 'Copy Basis password' : 'No Basis password stored'"
+        :title="selected.unlock_password ? t.copyPassword : t.noPasswordStored"
         @click="copyPassword(selected)"
       >
         <Icon :node="KeyRoundIcon" />
-        <span>Copy password</span>
+        <span>{{ t.copyPassword }}</span>
       </button>
       <button class="button button--secondary owner-item__delete" type="button" :disabled="owner.loading" @click="deleteItem(selected)">
         <Icon :node="TrashIcon" />
-        <span>{{ pendingDeleteID === selected.id ? "Confirm delete" : "Delete" }}</span>
+        <span>{{ pendingDeleteID === selected.id ? t.confirmDelete : t.delete }}</span>
       </button>
     </div>
 
@@ -202,8 +206,8 @@ function togglePanel(panelID: DrawerPanelID) {
     </p>
 
     <div v-if="activePanel" class="profile-content-drawer__editor">
-      <ContentMetadataEditor v-if="activePanel === 'details'" />
-      <GalleryManager v-else />
+      <ContentMetadataEditor v-if="activePanel === 'details'" :locale="locale" />
+      <GalleryManager v-else :locale="locale" />
     </div>
   </section>
 </template>

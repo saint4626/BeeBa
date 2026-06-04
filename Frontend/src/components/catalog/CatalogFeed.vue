@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
 import { publicMediaURL } from "../../lib/api/media-url";
+import { localizedPath, ui, type Locale } from "../../lib/i18n";
 import type { APIListResponse, CatalogTag, Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
 
 type IconName = "worlds" | "avatars" | "props" | "prefabs" | "download" | "heart" | "comment";
@@ -19,10 +20,12 @@ const props = defineProps<{
   baseCatalogPath: string;
   categoryParamMode: "path" | "query";
   author: string;
+  locale: Locale;
   publicAPIBaseURL: string;
   error?: string;
 }>();
 
+const t = ui[props.locale].catalog;
 const items = ref<PublicContentItem[]>(props.initialItems);
 const nextCursor = ref(props.initialPagination?.next_cursor ?? "");
 const loading = ref(false);
@@ -57,7 +60,7 @@ async function loadMore() {
     items.value = mergeItems(items.value, payload.data);
     nextCursor.value = payload.pagination?.next_cursor ?? "";
   } catch (caught) {
-    loadError.value = caught instanceof Error ? caught.message : "Failed to load more assets.";
+    loadError.value = caught instanceof Error ? caught.message : t.unavailableTitle;
   } finally {
     loading.value = false;
   }
@@ -114,7 +117,7 @@ function currentHref(overrides: Record<string, string>) {
 }
 
 function cardHref(item: PublicContentItem) {
-  return `/content/${item.id}`;
+  return localizedPath(props.locale, `/content/${item.id}`);
 }
 
 function mediaURL(imageID?: string | null) {
@@ -131,6 +134,10 @@ function authorInitial(item: PublicContentItem) {
 
 function categoryIcon(slug: Category["slug"]): IconName {
   return slug;
+}
+
+function categoryLabel(category: Category) {
+  return ui[props.locale].categories[category.slug] ?? category.name;
 }
 
 function iconPath(name: IconName) {
@@ -158,9 +165,9 @@ function backToTop() {
 
 <template>
   <div class="catalog-shell">
-    <div class="catalog-category-row" aria-label="Catalog categories">
-      <nav class="catalog-tabs" aria-label="Catalog categories">
-        <a class="catalog-tab" :class="{ 'catalog-tab--active': !activeCategory }" :href="catalogHref()">All</a>
+    <div class="catalog-category-row" :aria-label="t.categoriesLabel">
+      <nav class="catalog-tabs" :aria-label="t.categoriesLabel">
+        <a class="catalog-tab" :class="{ 'catalog-tab--active': !activeCategory }" :href="catalogHref()">{{ ui[props.locale].common.all }}</a>
         <a
           v-for="category in categories"
           :key="category.slug"
@@ -168,14 +175,14 @@ function backToTop() {
           :class="{ 'catalog-tab--active': activeCategory === category.slug }"
           :href="catalogHref(category.slug)"
         >
-          {{ category.name }}
+          {{ categoryLabel(category) }}
         </a>
       </nav>
     </div>
     <div v-if="error" class="catalog-empty" role="status">
       <div class="catalog-empty__title">
         <span aria-hidden="true"></span>
-        <strong>Catalog unavailable</strong>
+        <strong>{{ t.unavailableTitle }}</strong>
         <span aria-hidden="true"></span>
       </div>
       <p>{{ error }}</p>
@@ -183,10 +190,10 @@ function backToTop() {
     <div v-else-if="items.length === 0" class="catalog-empty" role="status">
       <div class="catalog-empty__title">
         <span aria-hidden="true"></span>
-        <strong>No published content</strong>
+        <strong>{{ t.emptyTitle }}</strong>
         <span aria-hidden="true"></span>
       </div>
-      <p>Only approved public assets appear here. Try another category or filters.</p>
+      <p>{{ t.emptyCopy }}</p>
     </div>
     <div v-else class="asset-masonry asset-masonry--featured catalog-grid">
       <a
@@ -206,7 +213,7 @@ function backToTop() {
         <span class="asset-card__top">
           <span class="asset-card__chip">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath(categoryIcon(item.category.slug))" /></svg>
-            <span>{{ item.category.name }}</span>
+            <span>{{ categoryLabel(item.category) }}</span>
           </span>
           <span>.bee</span>
         </span>
@@ -227,28 +234,28 @@ function backToTop() {
             <span>{{ authorName(item) }}</span>
           </span>
           <span class="asset-card__title">{{ item.title }}</span>
-          <span class="asset-card__metrics" aria-label="Asset metrics">
-            <span :aria-label="`${item.downloads_count} downloads`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('download')" /></svg>{{ item.downloads_count.toLocaleString() }}</span>
-            <span :aria-label="`${item.likes_count} likes`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('heart')" /></svg>{{ item.likes_count.toLocaleString() }}</span>
-            <span :aria-label="`${item.comments_count} comments`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('comment')" /></svg>{{ item.comments_count.toLocaleString() }}</span>
+          <span class="asset-card__metrics" :aria-label="t.metricsLabel">
+            <span :aria-label="`${item.downloads_count} ${t.downloadsLabel}`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('download')" /></svg>{{ item.downloads_count.toLocaleString() }}</span>
+            <span :aria-label="`${item.likes_count} ${t.likesLabel}`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('heart')" /></svg>{{ item.likes_count.toLocaleString() }}</span>
+            <span :aria-label="`${item.comments_count} ${t.commentsLabel}`"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="iconPath('comment')" /></svg>{{ item.comments_count.toLocaleString() }}</span>
           </span>
         </span>
       </a>
     </div>
 
     <div ref="sentinel" class="catalog-sentinel" aria-live="polite">
-      <span v-if="loading">Loading more assets...</span>
-      <a v-else-if="nextCursor" class="button button--secondary" :href="currentHref({ cursor: nextCursor })" @click.prevent="loadMore">Load more</a>
+      <span v-if="loading">{{ t.loadingMore }}</span>
+      <a v-else-if="nextCursor" class="button button--secondary" :href="currentHref({ cursor: nextCursor })" @click.prevent="loadMore">{{ t.loadMore }}</a>
       <span v-if="loadError" class="catalog-sentinel__error">{{ loadError }}</span>
     </div>
     <div v-if="!nextCursor && items.length && !loading" class="catalog-end">
       <div class="catalog-end__title">
         <span aria-hidden="true"></span>
-        <strong>You are all caught up</strong>
+        <strong>{{ t.endTitle }}</strong>
         <span aria-hidden="true"></span>
       </div>
-      <p>Consider changing your filters to find more</p>
-      <button type="button" @click="backToTop">Back to the top</button>
+      <p>{{ t.endCopy }}</p>
+      <button type="button" @click="backToTop">{{ t.backToTop }}</button>
     </div>
   </div>
 </template>

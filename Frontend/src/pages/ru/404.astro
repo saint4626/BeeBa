@@ -1,22 +1,25 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { localizedPath, ui } from "../../lib/i18n";
 
 Astro.response.status = 404;
+const locale = "ru";
+const t = ui[locale];
 ---
 
 <BaseLayout
-  title="Страница не найдена - BeeBa"
-  description="Запрошенная страница BeeBa не существует."
+  title={t.notFound.title}
+  description={t.notFound.description}
   canonicalPath="/ru/404"
 >
   <main class="not-found-page" aria-labelledby="not-found-title">
     <div class="not-found-page__content">
-      <span class="empty-state__badge">404</span>
-      <h1 id="not-found-title">Страница не найдена</h1>
-      <p>Такого маршрута нет или он больше недоступен.</p>
+      <span class="empty-state__badge">{t.notFound.badge}</span>
+      <h1 id="not-found-title">{t.notFound.heading}</h1>
+      <p>{t.notFound.copy}</p>
       <div class="not-found-page__actions">
-        <a class="button button--primary" href="/ru">Главная</a>
-        <a class="button button--secondary" href="/ru/catalog">Каталог</a>
+        <a class="button button--primary" href={localizedPath(locale, "/")}>{t.nav.home}</a>
+        <a class="button button--secondary" href={localizedPath(locale, "/catalog")}>{t.nav.catalog}</a>
       </div>
     </div>
   </main>

@@ -2,11 +2,12 @@
 import { computed, onMounted, ref } from "vue";
 import { getCurrentUser, login, register } from "../../lib/api/auth";
 import { clearAuthSession, publishAuthSession, readAuthSession } from "../../lib/auth/session";
+import { ui, type Locale } from "../../lib/i18n";
 import { navigateWithPageProgress } from "../../lib/ui/page-progress";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
-  locale: "en" | "ru";
+  locale: Locale;
   homeHref: string;
   profileHref: string;
   redirectHref: string;
@@ -23,51 +24,10 @@ const notice = ref("");
 const isAlreadySignedIn = ref(false);
 
 const copy = computed(() => {
-  if (props.locale === "ru") {
-    return {
-      title: mode.value === "login" ? "Вход" : "Регистрация",
-      email: "Email",
-      username: "Username",
-      displayName: "Display name",
-      password: "Пароль",
-      loginAction: "Войти",
-      registerAction: "Создать аккаунт",
-      working: "Обработка...",
-      needAccount: "Нет аккаунта?",
-      haveAccount: "Уже есть аккаунт?",
-      switchToRegister: "Зарегистрироваться",
-      switchToLogin: "Войти",
-      google: "Google",
-      github: "GitHub",
-      soon: "soon",
-      signedIn: "Вы уже вошли в аккаунт.",
-      openProfile: "Открыть профиль",
-      created: "Аккаунт создан. Выполняю вход.",
-      loginOk: "Вход выполнен для текущей вкладки.",
-      failed: "Ошибка авторизации.",
-    };
-  }
+  const auth = ui[props.locale].auth;
   return {
-    title: mode.value === "login" ? "Login" : "Sign up",
-    email: "Email",
-    username: "Username",
-    displayName: "Display name",
-    password: "Password",
-    loginAction: "Login",
-    registerAction: "Create account",
-    working: "Working...",
-    needAccount: "Need an account?",
-    haveAccount: "Already have an account?",
-    switchToRegister: "Sign up",
-    switchToLogin: "Login",
-    google: "Google",
-    github: "GitHub",
-    soon: "soon",
-    signedIn: "You are already signed in.",
-    openProfile: "Open profile",
-    created: "Account created. Signing in.",
-    loginOk: "Signed in for this browser tab.",
-    failed: "Authentication failed.",
+    ...auth,
+    title: mode.value === "login" ? auth.loginTitle : auth.registerTitle,
   };
 });
 
@@ -124,13 +84,12 @@ function switchMode(nextMode: "login" | "register") {
   error.value = "";
   notice.value = "";
 }
-
 </script>
 
 <template>
   <section class="auth-page" aria-labelledby="auth-page-title">
     <div class="auth-card">
-      <a class="auth-card__brand" :href="homeHref" aria-label="BeeBa home">
+      <a class="auth-card__brand" :href="homeHref" aria-label="BeeBa">
         <img src="/brand/beeba-logo-256.webp" alt="" width="48" height="48" decoding="async" />
       </a>
       <h1 id="auth-page-title">{{ copy.title }}</h1>

@@ -1,6 +1,7 @@
 import { en } from "./i18n/locales/en";
 import { ru } from "./i18n/locales/ru";
 import type { Locale, UIStrings } from "./i18n/types";
+import { localizedPath as buildLocalizedPath } from "./i18n/path";
 
 export type { Locale, UIStrings } from "./i18n/types";
 
@@ -17,9 +18,7 @@ export function normalizeLocale(locale: string | undefined): Locale {
 }
 
 export function localizedPath(locale: Locale, path: string): string {
-  if (path.startsWith("http")) return path;
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  return locale === defaultLocale ? normalized : `/ru${normalized === "/" ? "" : normalized}`;
+  return buildLocalizedPath(locale, path);
 }
 
 export function alternateLocale(locale: Locale): Locale {

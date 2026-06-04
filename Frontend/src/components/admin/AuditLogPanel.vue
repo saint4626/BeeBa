@@ -2,12 +2,14 @@
 import { onMounted, ref, watch } from "vue";
 import { listAuditLog } from "../../lib/api/admin";
 import type { AuditLogEntry } from "../../lib/api/types";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 
 const props = defineProps<{
   accessToken: string;
   isAuthorized: boolean;
   refreshNonce?: number;
+  locale?: Locale;
 }>();
 
 const emit = defineEmits<{
@@ -15,6 +17,9 @@ const emit = defineEmits<{
 }>();
 
 const entries = ref<AuditLogEntry[]>([]);
+const locale = props.locale ?? "en";
+const t = ui[locale].adminPanels.audit;
+const common = ui[locale].adminPanels.common;
 const action = ref("");
 const entityType = ref("");
 const actorUserID = ref("");
@@ -60,7 +65,7 @@ async function loadAudit(cursor: string, silent = false) {
     nextCursor.value = page.nextCursor;
     emit("count", entries.value.length);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Failed to load audit log.";
+    error.value = caught instanceof Error ? caught.message : t.failed;
     emit("count", entries.value.length);
     if (!silent) {
       showToast(error.value, "error");
@@ -71,7 +76,7 @@ async function loadAudit(cursor: string, silent = false) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -88,38 +93,38 @@ function compactJSON(value: AuditLogEntry["after_json"]) {
   <section class="panel panel--wide" aria-labelledby="audit-title">
     <div class="panel__head panel__head--row">
       <div>
-        <p class="eyebrow">Audit</p>
-        <h2 id="audit-title">Audit log</h2>
+        <p class="eyebrow">{{ t.eyebrow }}</p>
+        <h2 id="audit-title">{{ t.title }}</h2>
       </div>
-      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshAudit()">Refresh</button>
+      <button class="button button--secondary" type="button" :disabled="loading || !isAuthorized" @click="refreshAudit()">{{ common.refresh }}</button>
     </div>
 
-    <div v-if="!isAuthorized" class="message message--warning">Login with an admin or owner account to inspect audit logs.</div>
+    <div v-if="!isAuthorized" class="message message--warning">{{ t.unauthorized }}</div>
 
     <div class="admin-controls">
       <label class="field">
-        Action
+        {{ t.action }}
         <input v-model="action" type="search" maxlength="120" placeholder="content.approve" :disabled="!isAuthorized" @change="refreshAudit()" />
       </label>
       <label class="field">
-        Entity type
+        {{ t.entityType }}
         <input v-model="entityType" type="search" maxlength="80" placeholder="content" :disabled="!isAuthorized" @change="refreshAudit()" />
       </label>
       <label class="field">
-        Actor user ID
+        {{ t.actorUserID }}
         <input v-model="actorUserID" type="search" :disabled="!isAuthorized" @change="refreshAudit()" />
       </label>
       <label class="field">
-        Entity ID
+        {{ t.entityID }}
         <input v-model="entityID" type="search" :disabled="!isAuthorized" @change="refreshAudit()" />
       </label>
     </div>
 
     <div v-if="entries.length === 0" class="empty-state">
-      <span class="empty-state__badge">No audit rows</span>
+      <span class="empty-state__badge">{{ t.emptyBadge }}</span>
       <div>
-        <h2>No audit entries match this filter.</h2>
-        <p>Administrative and moderation actions appear here after they are committed.</p>
+        <h2>{{ t.emptyTitle }}</h2>
+        <p>{{ t.emptyCopy }}</p>
       </div>
     </div>
 
@@ -134,23 +139,23 @@ function compactJSON(value: AuditLogEntry["after_json"]) {
           <p>{{ formatDate(entry.created_at) }}</p>
           <dl class="meta-grid">
             <div>
-              <dt>Entity</dt>
-              <dd>{{ entry.entity_id || "n/a" }}</dd>
+              <dt>{{ t.entity }}</dt>
+              <dd>{{ entry.entity_id || common.none }}</dd>
             </div>
             <div>
-              <dt>Actor</dt>
-              <dd>{{ entry.actor_user_id || "system" }}</dd>
+              <dt>{{ t.actor }}</dt>
+              <dd>{{ entry.actor_user_id || common.system }}</dd>
             </div>
             <div>
               <dt>IP</dt>
-              <dd>{{ entry.ip_address || "n/a" }}</dd>
+              <dd>{{ entry.ip_address || common.none }}</dd>
             </div>
           </dl>
           <code>{{ compactJSON(entry.after_json) }}</code>
         </div>
       </article>
       <button v-if="nextCursor" class="button button--secondary" type="button" :disabled="loading" @click="loadMore">
-        {{ loading ? "Loading..." : "Load more" }}
+        {{ loading ? common.loading : common.loadMore }}
       </button>
     </div>
   </section>

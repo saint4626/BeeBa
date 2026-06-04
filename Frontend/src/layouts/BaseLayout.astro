@@ -32,30 +32,30 @@ const statusURL = runtimeEnv?.PUBLIC_STATUS_URL ?? PUBLIC_STATUS_URL;
 const locale = normalizeLocale(Astro.currentLocale);
 const t = ui[locale];
 const nextLocale = alternateLocale(locale);
-const langPath = localizedPath(nextLocale, Astro.url.pathname.replace(/^\/ru(?=\/|$)/, "") || "/");
+const langPath = localizedPath(nextLocale, `${Astro.url.pathname}${Astro.url.search}`);
 const homePath = localizedPath(locale, "/");
 const catalogPath = localizedPath(locale, "/catalog");
 const apiPath = localizedPath(locale, "/api-reference");
 const uploadPath = localizedPath(locale, "/upload");
 const loginPath = localizedPath(locale, "/login");
 const profilePath = localizedPath(locale, "/profile");
-const moderationPath = "/admin/moderation";
+const moderationPath = localizedPath(locale, "/admin/moderation");
 const requestCookie = Astro.request.headers.get("cookie") ?? "";
 const hasAuthCookie = /(?:^|;\s*)beeba_access_token=/.test(requestCookie);
 let authUser: PublicUser | null = null;
 let authCanManage = false;
 const currentPath = Astro.url.pathname.replace(/^\/ru(?=\/|$)/, "") || "/";
 const currentCategory = currentPath.match(/^\/catalog\/([^/]+)/)?.[1] ?? "";
-const languageLabel = locale === "ru" ? "Русский" : "English";
-const nextLanguageLabel = nextLocale === "ru" ? "Русский" : "English";
-const searchCategories = [
-  { value: "", label: locale === "ru" ? "Все" : "All" },
-  { value: "worlds", label: locale === "ru" ? "Миры" : "Worlds" },
-  { value: "avatars", label: locale === "ru" ? "Аватары" : "Avatars" },
-  { value: "props", label: locale === "ru" ? "Props" : "Props" },
-  { value: "prefabs", label: locale === "ru" ? "Prefabs" : "Prefabs" },
+const localizedSearchCategories = [
+  { value: "", label: t.common.all },
+  { value: "worlds", label: t.categories.worlds },
+  { value: "avatars", label: t.categories.avatars },
+  { value: "props", label: t.categories.props },
+  { value: "prefabs", label: t.categories.prefabs },
 ];
-const activeSearchCategory = searchCategories.find((category) => category.value === currentCategory) ?? searchCategories[0];
+const localizedActiveSearchCategory = localizedSearchCategories.find((category) => category.value === currentCategory) ?? localizedSearchCategories[0];
+const displayLanguageLabel = locale === "ru" ? "Русский" : "English";
+const displayNextLanguageLabel = nextLocale === "ru" ? "Русский" : "English";
 const activeNav = (path: string) => {
   if (path === "/") return currentPath === "/";
   return currentPath === path || currentPath.startsWith(`${path}/`);
@@ -177,31 +177,31 @@ const authNavUser = authUser
           </a>
           <form class="global-search" action={catalogPath} method="get" data-global-search>
             <label class="sr-only" for="global-search">{t.nav.searchPlaceholder}</label>
-            <input id="global-search-category" type="hidden" name="category" value={activeSearchCategory.value} />
-            <Dropdown class="global-search__scope" label="Choose asset type" width="sm">
-              <span slot="trigger" data-search-category-label>{activeSearchCategory.label}</span>
+            <input id="global-search-category" type="hidden" name="category" value={localizedActiveSearchCategory.value} />
+            <Dropdown class="global-search__scope" label={t.nav.searchScopeLabel} width="sm">
+              <span slot="trigger" data-search-category-label>{localizedActiveSearchCategory.label}</span>
               <LucideIcon slot="trigger" node={ChevronDown} size={14} />
-              {searchCategories.map((category) => (
+              {localizedSearchCategories.map((category) => (
                 <button
-                  class:list={["ui-dropdown__item", category.value === activeSearchCategory.value && "ui-dropdown__item--active"]}
+                  class:list={["ui-dropdown__item", category.value === localizedActiveSearchCategory.value && "ui-dropdown__item--active"]}
                   type="button"
                   data-search-category-option
                   data-value={category.value}
-                  aria-pressed={category.value === activeSearchCategory.value ? "true" : "false"}
+                  aria-pressed={category.value === localizedActiveSearchCategory.value ? "true" : "false"}
                 >
                   {category.label}
                 </button>
               ))}
             </Dropdown>
             <input id="global-search" name="q" type="search" placeholder={t.nav.searchPlaceholder} />
-            <button class="global-search__submit" type="submit" aria-label="Search">
+            <button class="global-search__submit" type="submit" aria-label={t.nav.searchSubmitLabel}>
               <LucideIcon node={Search} size={17} />
             </button>
           </form>
           <div class="auth-nav" data-auth-nav data-auth-user={authNavUser} data-auth-admin-access={authCanManage ? "1" : "0"}>
             <a class="button button--secondary auth-nav__manage" href={moderationPath} data-auth-manage hidden={!authCanManage}>
               <LucideIcon node={ShieldCheck} size={16} />
-              <span>Manage</span>
+              <span>{t.nav.manage}</span>
             </a>
             <a
               class:list={["button button--primary auth-nav__upload", !authUser && "button--disabled"]}
@@ -215,7 +215,7 @@ const authNavUser = authUser
             </a>
             <a class="button button--secondary auth-nav__login" href={loginPath} data-auth-login hidden={Boolean(authUser)}>{t.nav.login}</a>
             <details class="auth-nav__menu ui-dropdown ui-dropdown--end ui-dropdown--sm" data-auth-menu data-ui-dropdown hidden={!authUser}>
-              <summary aria-label="Open profile menu" data-auth-summary title={authUser?.display_name || authUser?.username || undefined}>
+              <summary aria-label={t.nav.profileMenuLabel} data-auth-summary title={authUser?.display_name || authUser?.username || undefined}>
                 <img
                   class="auth-nav__avatar"
                   src={authUser?.avatar_image_id ? `/api/v1/media/${authUser.avatar_image_id}` : ""}
@@ -248,11 +248,11 @@ const authNavUser = authUser
           <div class="site-header__page-actions" data-header-actions>
             <slot name="header-actions" />
           </div>
-          <Dropdown class="site-settings" label="Open site settings" align="end" width="sm">
+          <Dropdown class="site-settings" label={t.nav.settingsLabel} align="end" width="sm">
             <LucideIcon slot="trigger" node={Settings} size={17} />
-            <p class="ui-dropdown__label">Language</p>
-            <span class="ui-dropdown__item ui-dropdown__item--active" aria-current="true">{languageLabel}</span>
-            <a class="ui-dropdown__item" href={langPath}>{nextLanguageLabel}</a>
+            <p class="ui-dropdown__label">{t.nav.language}</p>
+            <span class="ui-dropdown__item ui-dropdown__item--active" aria-current="true">{displayLanguageLabel}</span>
+            <a class="ui-dropdown__item" href={langPath}>{displayNextLanguageLabel}</a>
           </Dropdown>
         </div>
       </header>
@@ -264,12 +264,12 @@ const authNavUser = authUser
           <footer class="site-footer">
             <div class="page-container">
               <nav class="site-footer__bar" aria-label="Footer navigation">
-                <span class="site-footer__copy">© BeeBa 2026</span>
+                <span class="site-footer__copy">{t.footer.copyright}</span>
                 <a href={homePath}>{t.nav.home}</a>
                 <a href={catalogPath}>{t.nav.catalog}</a>
                 <a href={apiPath}>{t.nav.api}</a>
                 <a href={statusURL} data-astro-reload>{t.nav.status}</a>
-                <span class="site-footer__group" aria-label="Club links">
+                <span class="site-footer__group" aria-label={t.footer.clubLinksLabel}>
                   <span>Club</span>
                   <a class="site-footer__icon-link" href="https://github.com/starsofmeta" aria-label="Stars of Meta on GitHub" target="_blank" rel="noreferrer">
                     <img src="/icons/social/github.svg" alt="" loading="lazy" />
@@ -278,7 +278,7 @@ const authNavUser = authUser
                     <img src="/icons/social/telegram.svg" alt="" loading="lazy" />
                   </a>
                 </span>
-                <span class="site-footer__group" aria-label="BasisVR links">
+                <span class="site-footer__group" aria-label={t.footer.basisLinksLabel}>
                   <span>BasisVR</span>
                   <a class="site-footer__icon-link" href="https://github.com/BasisVR/Basis" aria-label="BasisVR Basis on GitHub" target="_blank" rel="noreferrer">
                     <img src="/icons/social/github.svg" alt="" loading="lazy" />
@@ -290,9 +290,9 @@ const authNavUser = authUser
                     <img src="/icons/social/discord.svg" alt="" loading="lazy" />
                   </a>
                 </span>
-                <span class="site-footer__group" aria-label="Personal contacts">
+                <span class="site-footer__group" aria-label={t.footer.contactLinksLabel}>
                   <span>VAV1ST</span>
-                  <button class="site-footer__icon-link" type="button" title="Copy Discord: VAV1ST" aria-label="Copy Discord handle VAV1ST" data-copy-text="VAV1ST" data-copy-label="Discord handle copied">
+                  <button class="site-footer__icon-link" type="button" title={t.footer.copyDiscordTitle} aria-label={t.footer.copyDiscordLabel} data-copy-text="VAV1ST" data-copy-label={t.footer.discordCopied}>
                     <img src="/icons/social/discord.svg" alt="" loading="lazy" />
                   </button>
                   <a class="site-footer__icon-link" href="https://t.me/vav1st" aria-label="VAV1ST on Telegram" target="_blank" rel="noreferrer">

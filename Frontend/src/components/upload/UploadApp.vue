@@ -5,6 +5,7 @@ import { readAuthSession } from "../../lib/auth/session";
 import { uploadContentImage } from "../../lib/api/media";
 import { uploadContentPackage } from "../../lib/api/uploads";
 import { BYTE_UNITS, UPLOAD_LIMITS, megabytesFromBytes } from "../../lib/config/runtime";
+import { ui, type Locale } from "../../lib/i18n";
 import type { ContentUploadCreated, PublicUser } from "../../lib/api/types";
 import { showToast } from "../../lib/ui/toast";
 
@@ -14,10 +15,12 @@ const props = withDefaults(
   defineProps<{
     initialUser?: PublicUser | null;
     loginHref?: string;
+    locale?: Locale;
   }>(),
   {
     initialUser: null,
     loginHref: "/login?next=%2Fupload",
+    locale: "en",
   },
 );
 
@@ -59,11 +62,12 @@ const ChevronDownIcon = ChevronDown as IconNode;
 
 const maxPreviewBytes = UPLOAD_LIMITS.maxImageBytes;
 const maxPreviewMegabytes = megabytesFromBytes(maxPreviewBytes);
+const t = ui[props.locale].upload;
 const categories = [
-  { value: "worlds", label: "Worlds" },
-  { value: "avatars", label: "Avatars" },
-  { value: "props", label: "Props" },
-  { value: "prefabs", label: "Prefabs" },
+  { value: "worlds", label: ui[props.locale].categories.worlds },
+  { value: "avatars", label: ui[props.locale].categories.avatars },
+  { value: "props", label: ui[props.locale].categories.props },
+  { value: "prefabs", label: ui[props.locale].categories.prefabs },
 ] as const;
 
 const currentUser = ref<PublicUser | null>(null);
@@ -82,16 +86,16 @@ const uploadProgress = ref(0);
 const uploadFormElement = ref<HTMLFormElement | null>(null);
 
 const isAuthenticated = computed(() => Boolean(currentUser.value));
-const selectedFileName = computed(() => selectedFile.value?.name ?? "Choose .bee package");
-const previewFileName = computed(() => previewFile.value?.name ?? "Optional PNG/JPEG preview");
+const selectedFileName = computed(() => selectedFile.value?.name ?? t.choosePackage);
+const previewFileName = computed(() => previewFile.value?.name ?? t.choosePreview);
 const selectedFileSize = computed(() => selectedFile.value ? formatBytes(selectedFile.value.size) : "");
 const previewFileSize = computed(() => previewFile.value ? formatBytes(previewFile.value.size) : "");
 const loginHref = computed(() => props.loginHref);
-const selectedCategoryLabel = computed(() => categories.find((item) => item.value === category.value)?.label ?? "Worlds");
+const selectedCategoryLabel = computed(() => categories.find((item) => item.value === category.value)?.label ?? ui[props.locale].categories.worlds);
 const uploadButtonLabel = computed(() => {
-  if (!uploadLoading.value) return "Upload to quarantine";
-  if (uploadProgress.value >= 100 && previewFile.value) return "Queuing preview...";
-  return `Uploading ${uploadProgress.value}%`;
+  if (!uploadLoading.value) return t.uploadButton;
+  if (uploadProgress.value >= 100 && previewFile.value) return t.queuingPreview;
+  return `${t.uploadingPrefix} ${uploadProgress.value}%`;
 });
 const uploadProgressStyle = computed(() => ({
   "--upload-progress": `${uploadLoading.value ? uploadProgress.value : 0}%`,
@@ -122,7 +126,7 @@ function selectCategory(value: string) {
 
 async function submitUpload() {
   if (!isAuthenticated.value) {
-    showToast("Sign in before uploading content.", "error");
+    showToast(t.signInRequired, "error");
     return;
   }
 
@@ -156,14 +160,14 @@ async function submitUpload() {
         isPrimary: true,
         sortOrder: 0,
       });
-      showToast("Package and primary preview are queued.", "success");
+      showToast(t.queuedWithPreview, "success");
     } else {
-      showToast("Package is queued for scan.", "success");
+      showToast(t.queuedPackage, "success");
     }
 
     resetUploadForm();
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Upload failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.failed, "error");
   } finally {
     uploadLoading.value = false;
     uploadProgress.value = 0;
@@ -172,23 +176,23 @@ async function submitUpload() {
 
 function validateUpload() {
   if (!selectedFile.value) {
-    return "Choose a .bee file.";
+    return t.chooseBee;
   }
   if (!selectedFile.value.name.toLowerCase().endsWith(".bee")) {
-    return "Only .bee files are accepted.";
+    return t.onlyBee;
   }
   if (!title.value.trim()) {
-    return "Title is required.";
+    return t.titleRequired;
   }
   if (!unlockPassword.value.trim()) {
-    return "Basis unlock password is required.";
+    return t.passwordRequired;
   }
   if (previewFile.value) {
     if (previewFile.value.size > maxPreviewBytes) {
-      return `Preview image must be ${maxPreviewMegabytes} MB or smaller.`;
+      return `${t.previewTooLargePrefix} ${maxPreviewMegabytes} ${t.previewTooLargeSuffix}`;
     }
     if (previewFile.value.type !== "image/png" && previewFile.value.type !== "image/jpeg") {
-      return "Preview must be a PNG or JPEG image.";
+      return t.previewType;
     }
   }
   return "";
@@ -215,20 +219,20 @@ function formatBytes(value: number) {
 <template>
   <section v-if="!isAuthenticated" class="upload-gate" aria-labelledby="upload-gate-title">
     <div>
-      <p class="eyebrow">Authentication required</p>
-      <h2 id="upload-gate-title">Sign in to upload Basis assets.</h2>
-      <p>Package uploads, preview images, and owner library actions are available only after authentication.</p>
+      <p class="eyebrow">{{ t.gateEyebrow }}</p>
+      <h2 id="upload-gate-title">{{ t.gateTitle }}</h2>
+      <p>{{ t.gateCopy }}</p>
     </div>
-    <a class="button button--primary" :href="loginHref">Sign in</a>
+    <a class="button button--primary" :href="loginHref">{{ t.signIn }}</a>
   </section>
 
   <div v-else class="upload-workspace">
     <section class="panel upload-form-panel" aria-labelledby="upload-form-title">
       <div class="panel__head">
         <div>
-          <p class="eyebrow">Package upload</p>
-          <h2 id="upload-form-title">New Basis asset</h2>
-          <p>Submit the `.bee` file first. The backend stores it in quarantine, then worker scan and moderation decide publication.</p>
+          <p class="eyebrow">{{ t.panelEyebrow }}</p>
+          <h2 id="upload-form-title">{{ t.panelTitle }}</h2>
+          <p>{{ t.panelCopy }}</p>
         </div>
       </div>
 
@@ -238,26 +242,26 @@ function formatBytes(value: number) {
             <input type="file" accept=".bee" @change="onFileChange" />
             <Icon :node="FileArchiveIcon" :size="28" />
             <strong>{{ selectedFileName }}</strong>
-            <span>{{ selectedFileSize || ".bee packages only" }}</span>
+            <span>{{ selectedFileSize || t.packageHint }}</span>
           </label>
 
           <label class="upload-drop">
             <input type="file" accept="image/png,image/jpeg" @change="onPreviewChange" />
             <Icon :node="ImagePlusIcon" :size="28" />
             <strong>{{ previewFileName }}</strong>
-            <span>{{ previewFileSize || `Primary card preview, up to ${maxPreviewMegabytes} MB` }}</span>
+            <span>{{ previewFileSize || `${t.previewHintPrefix} ${maxPreviewMegabytes} MB` }}</span>
           </label>
         </div>
 
         <div class="upload-form__grid">
           <label class="field">
-            Title
+            {{ t.titleLabel }}
             <input v-model="title" type="text" maxlength="160" required />
           </label>
           <label class="field">
-            Category
+            {{ t.categoryLabel }}
             <details ref="categoryDropdown" class="ui-dropdown ui-dropdown--start upload-category-dropdown">
-              <summary aria-label="Choose content category">
+              <summary :aria-label="t.categoryAria">
                 <span>{{ selectedCategoryLabel }}</span>
                 <Icon :node="ChevronDownIcon" :size="15" />
               </summary>
@@ -279,7 +283,7 @@ function formatBytes(value: number) {
         </div>
 
         <label class="field">
-          Description
+          {{ t.descriptionLabel }}
           <textarea v-model="description" maxlength="5000" rows="5" />
         </label>
 
@@ -288,23 +292,23 @@ function formatBytes(value: number) {
             <input v-model="visibility" type="radio" value="public" />
             <Icon :node="EyeIcon" />
             <span>
-              <strong>Public catalog</strong>
-              <small>Password is shown on public cards after moderation.</small>
+              <strong>{{ t.publicTitle }}</strong>
+              <small>{{ t.publicCopy }}</small>
             </span>
           </label>
           <label class="upload-option" :class="{ 'upload-option--active': visibility === 'private' }">
             <input v-model="visibility" type="radio" value="private" />
             <Icon :node="LockIcon" />
             <span>
-              <strong>Private library</strong>
-              <small>Hidden from the catalog unless you share the link.</small>
+              <strong>{{ t.privateTitle }}</strong>
+              <small>{{ t.privateCopy }}</small>
             </span>
           </label>
         </div>
 
         <div class="upload-form__grid upload-form__grid--compact">
           <label class="field">
-            Basis unlock password
+            {{ t.passwordLabel }}
             <span class="field-control-icon">
               <Icon :node="KeyRoundIcon" />
               <input v-model="unlockPassword" type="text" maxlength="256" required />
@@ -336,7 +340,7 @@ function formatBytes(value: number) {
       <section v-if="lastUpload" class="panel upload-complete-card" aria-labelledby="last-upload-title">
         <Icon :node="CheckIcon" :size="22" />
         <div>
-          <p class="eyebrow">Last upload</p>
+          <p class="eyebrow">{{ t.lastUpload }}</p>
           <h2 id="last-upload-title">{{ lastUpload.status }}</h2>
           <p>{{ lastUpload.original_filename }} / {{ formatBytes(lastUpload.file_size) }}</p>
           <code>{{ lastUpload.file_hash_sha256 }}</code>

@@ -1,15 +1,16 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
-import EmailVerificationApp from "../components/auth/EmailVerificationApp.vue";
-import { ui } from "../lib/i18n";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import EmailVerificationApp from "../../components/auth/EmailVerificationApp.vue";
+import { ui } from "../../lib/i18n";
 
-const locale = "en";
+const locale = "ru";
 const t = ui[locale];
 ---
 
 <BaseLayout
   title={t.verifyEmail.title}
   description={t.verifyEmail.description}
+  canonicalPath="/ru/verify-email"
 >
   <section class="page-shell page-shell--narrow">
     <EmailVerificationApp client:load locale={locale} />

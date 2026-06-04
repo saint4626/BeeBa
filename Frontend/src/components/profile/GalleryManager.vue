@@ -2,6 +2,7 @@
 import { computed, defineComponent, h, onBeforeUnmount, ref, watch, type PropType } from "vue";
 import { ImagePlus, Save, Star, Trash2, UploadCloud, X } from "lucide";
 import { BYTE_UNITS, UPLOAD_LIMITS, megabytesFromBytes } from "../../lib/config/runtime";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 import type { UploadedImage } from "../../lib/api/types";
@@ -51,6 +52,8 @@ const UploadIcon = UploadCloud as IconNode;
 const RemoveIcon = X as IconNode;
 
 const owner = useOwnerStore();
+const props = withDefaults(defineProps<{ locale?: Locale }>(), { locale: "en" });
+const t = ui[props.locale].profile;
 const fileInput = ref<HTMLInputElement | null>(null);
 const queuedImages = ref<QueuedImage[]>([]);
 const activeImageID = ref("");
@@ -78,8 +81,8 @@ const selectedImage = computed(
 );
 const selectedImageURL = computed(() => (selectedImage.value ? ownerImageURL(selectedImage.value) : ""));
 const uploadButtonLabel = computed(() => {
-  if (!uploading.value) return queuedImages.value.length > 1 ? "Upload images" : "Upload image";
-  return `Uploading ${uploadIndex.value}/${queuedImages.value.length}`;
+  if (!uploading.value) return queuedImages.value.length > 1 ? t.uploadImages : t.uploadImage;
+  return `${t.uploadingImagesPrefix} ${uploadIndex.value}/${queuedImages.value.length}`;
 });
 
 watch(
@@ -145,7 +148,7 @@ function onDrop(event: DragEvent) {
 
 function queueFiles(files: FileList | null | undefined) {
   if (!owner.selectedItem) {
-    showToast("Select a package before adding images.", "info");
+    showToast(t.selectPackageBeforeImages, "info");
     return;
   }
 
@@ -155,7 +158,7 @@ function queueFiles(files: FileList | null | undefined) {
   let accepted = 0;
   for (const file of nextFiles) {
     if (!["image/jpeg", "image/png"].includes(file.type)) {
-      showToast(`${file.name} is not a PNG or JPEG image.`, "error");
+      showToast(`${file.name} ${t.imageTypeSuffix}`, "error");
       continue;
     }
     if (file.size > UPLOAD_LIMITS.maxImageBytes) {
@@ -174,7 +177,7 @@ function queueFiles(files: FileList | null | undefined) {
   }
 
   if (accepted > 0) {
-    showToast(`${accepted} image${accepted === 1 ? "" : "s"} added to upload queue.`, "info");
+    showToast(`${accepted} ${t.imagesAddedSuffix}`, "info");
   }
 }
 
@@ -218,9 +221,9 @@ async function uploadQueuedImages() {
       await owner.addContentImage(image.file, image.altText.trim(), image.isPrimary, { silent: true });
     }
     clearQueue();
-    showToast(`${uploadBatch.length} image${uploadBatch.length === 1 ? "" : "s"} queued for processing.`, "success");
+    showToast(`${uploadBatch.length} ${t.imagesQueuedSuffix}`, "success");
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Image upload failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.imageUploadFailed, "error");
   } finally {
     uploading.value = false;
     uploadIndex.value = 0;
@@ -231,14 +234,14 @@ async function saveSelectedImage() {
   if (!selectedImage.value || imageAction.value) return;
   const sortOrder = Number(selectedSortOrder.value);
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 1000) {
-    showToast("Sort order must be a whole number from 0 to 1000.", "error");
+    showToast(t.sortOrderInvalid, "error");
     return;
   }
   imageAction.value = "save";
   try {
     await owner.updateImageText(selectedImage.value.id, selectedAltText.value.trim(), sortOrder);
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Image metadata update failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.imageMetadataFailed, "error");
   } finally {
     imageAction.value = "";
   }
@@ -250,7 +253,7 @@ async function makeSelectedPrimary() {
   try {
     await owner.makePrimary(selectedImage.value.id);
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Primary preview update failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.primaryUpdateFailed, "error");
   } finally {
     imageAction.value = "";
   }
@@ -260,14 +263,14 @@ async function deleteSelectedImage() {
   if (!selectedImage.value || imageAction.value) return;
   if (pendingDeleteImageID.value !== selectedImage.value.id) {
     pendingDeleteImageID.value = selectedImage.value.id;
-    showToast("Click Remove image again to confirm.", "info");
+    showToast(t.removeConfirm, "info");
     return;
   }
   imageAction.value = "delete";
   try {
     await owner.removeImage(selectedImage.value.id);
   } catch (caught) {
-    showToast(caught instanceof Error ? caught.message : "Image removal failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.imageRemovalFailed, "error");
   } finally {
     pendingDeleteImageID.value = "";
     imageAction.value = "";
@@ -284,14 +287,14 @@ function queueID() {
 <template>
   <section class="profile-gallery-panel" aria-labelledby="gallery-title">
     <div class="panel__head">
-      <p class="eyebrow">Content media</p>
-      <h2 id="gallery-title">Preview and gallery</h2>
-      <p>Manage the card preview and gallery images for the selected package.</p>
+      <p class="eyebrow">{{ t.contentMedia }}</p>
+      <h2 id="gallery-title">{{ t.previewGallery }}</h2>
+      <p>{{ t.previewGalleryCopy }}</p>
     </div>
 
     <div v-if="!owner.selectedItem" class="empty-state empty-state--compact">
-      <span class="empty-state__badge">No package selected</span>
-      <p>Select an owned package to manage its images.</p>
+      <span class="empty-state__badge">{{ t.noPackageSelected }}</span>
+      <p>{{ t.selectPackageImages }}</p>
     </div>
 
     <div v-else class="profile-gallery-editor">
@@ -300,11 +303,11 @@ function queueID() {
           <img v-if="selectedImageURL" :src="selectedImageURL" :alt="selectedImage?.alt_text || owner.selectedItem.title" />
           <span v-else class="media-viewer__placeholder">
             <Icon :node="ImagePlusIcon" :size="24" />
-            <span>{{ selectedImage ? selectedImage.processing_status : "No images yet" }}</span>
+            <span>{{ selectedImage ? selectedImage.processing_status : t.noImagesYet }}</span>
           </span>
         </div>
 
-        <div v-if="sortedImages.length > 0" class="media-strip" aria-label="Existing package images">
+        <div v-if="sortedImages.length > 0" class="media-strip" :aria-label="t.existingImagesLabel">
           <button
             v-for="image in sortedImages"
             :key="image.id"
@@ -316,7 +319,7 @@ function queueID() {
           >
             <img v-if="ownerImageURL(image)" :src="ownerImageURL(image)" :alt="image.alt_text || owner.selectedItem.title" />
             <span v-else>{{ image.processing_status }}</span>
-            <em v-if="image.is_primary">Primary</em>
+            <em v-if="image.is_primary">{{ t.primary }}</em>
           </button>
         </div>
       </div>
@@ -325,8 +328,8 @@ function queueID() {
         <div v-if="selectedImage" class="media-selected-card">
           <div class="media-selected-card__head">
             <div>
-              <p class="eyebrow">Selected image</p>
-              <strong>{{ selectedImage.is_primary ? "Primary preview" : "Gallery image" }}</strong>
+              <p class="eyebrow">{{ t.selectedImage }}</p>
+              <strong>{{ selectedImage.is_primary ? t.primaryPreview : t.galleryImage }}</strong>
               <span>{{ selectedImage.processing_status }} / {{ formatBytes(selectedImage.file_size) }}</span>
             </div>
             <button
@@ -336,17 +339,17 @@ function queueID() {
               @click="makeSelectedPrimary"
             >
               <Icon :node="StarIcon" />
-              <span>{{ imageAction === "primary" ? "Saving..." : "Set primary" }}</span>
+              <span>{{ imageAction === "primary" ? ui[props.locale].common.saving : t.setPrimary }}</span>
             </button>
           </div>
 
           <div class="media-selected-card__fields">
             <label class="field">
-              Alt text
+              {{ t.altText }}
               <input v-model="selectedAltText" type="text" maxlength="500" />
             </label>
             <label class="field">
-              Sort
+              {{ t.sort }}
               <input v-model.number="selectedSortOrder" type="number" min="0" max="1000" step="1" />
             </label>
           </div>
@@ -354,11 +357,11 @@ function queueID() {
           <div class="media-selected-card__actions">
             <button class="button button--primary" type="button" :disabled="Boolean(imageAction)" @click="saveSelectedImage">
               <Icon :node="SaveIcon" />
-              <span>{{ imageAction === "save" ? "Saving..." : "Save image" }}</span>
+              <span>{{ imageAction === "save" ? ui[props.locale].common.saving : t.saveImage }}</span>
             </button>
             <button class="button button--secondary owner-item__delete" type="button" :disabled="Boolean(imageAction)" @click="deleteSelectedImage">
               <Icon :node="TrashIcon" />
-              <span>{{ imageAction === "delete" ? "Removing..." : pendingDeleteImageID === selectedImage.id ? "Confirm remove" : "Remove image" }}</span>
+              <span>{{ imageAction === "delete" ? t.removing : pendingDeleteImageID === selectedImage.id ? t.confirmRemove : t.removeImage }}</span>
             </button>
           </div>
         </div>
@@ -382,25 +385,25 @@ function queueID() {
           />
           <Icon :node="UploadIcon" :size="22" />
           <div>
-            <strong>Drop PNG/JPEG images here</strong>
-            <span>Up to {{ maxImageMegabytes }} MB each. Select one or many files.</span>
+            <strong>{{ t.dropImages }}</strong>
+            <span>{{ t.imageLimitPrefix }} {{ maxImageMegabytes }} {{ t.imageLimitSuffix }}</span>
           </div>
           <button class="button button--secondary" type="button" :disabled="uploading" @click="chooseFiles">
-            Choose images
+            {{ t.chooseImages }}
           </button>
         </div>
 
-        <div v-if="queuedImages.length > 0" class="media-upload-queue" aria-label="Images queued before upload">
+        <div v-if="queuedImages.length > 0" class="media-upload-queue" :aria-label="t.queuedImagesLabel">
           <article v-for="image in queuedImages" :key="image.id" class="media-queue-card">
             <img :src="image.previewURL" :alt="image.altText || image.file.name" />
             <div class="media-queue-card__body">
               <strong>{{ image.file.name }}</strong>
               <span>{{ formatBytes(image.file.size) }}</span>
-              <input v-model="image.altText" type="text" maxlength="500" placeholder="Alt text" />
+              <input v-model="image.altText" type="text" maxlength="500" :placeholder="t.altText" />
             </div>
             <label class="media-queue-card__primary">
               <input type="radio" name="queued-primary-image" :checked="image.isPrimary" @change="setQueuedPrimary(image.id)" />
-              Primary
+              {{ t.primary }}
             </label>
             <button class="owner-item__icon-action" type="button" aria-label="Remove image from upload queue" @click="removeQueued(image.id)">
               <Icon :node="RemoveIcon" />
@@ -408,7 +411,7 @@ function queueID() {
           </article>
 
           <div class="media-upload-queue__actions">
-            <button class="button button--ghost" type="button" :disabled="uploading" @click="clearQueue">Clear queue</button>
+            <button class="button button--ghost" type="button" :disabled="uploading" @click="clearQueue">{{ t.clearQueue }}</button>
             <button class="button button--primary" type="button" :disabled="uploading" @click="uploadQueuedImages">
               <Icon :node="UploadIcon" />
               <span>{{ uploadButtonLabel }}</span>

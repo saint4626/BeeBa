@@ -2,6 +2,7 @@
 import { computed, defineComponent, h, onBeforeUnmount, ref, watch, type PropType } from "vue";
 import { ImagePlus } from "lucide";
 import { UPLOAD_LIMITS, megabytesFromBytes } from "../../lib/config/runtime";
+import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
 import { useOwnerStore } from "../../stores/owner.store";
 
@@ -35,6 +36,8 @@ const Icon = defineComponent({
 });
 
 const ImagePlusIcon = ImagePlus as IconNode;
+const props = withDefaults(defineProps<{ locale?: Locale }>(), { locale: "en" });
+const t = ui[props.locale].profile;
 const maxAvatarBytes = UPLOAD_LIMITS.maxImageBytes;
 const maxAvatarMegabytes = megabytesFromBytes(maxAvatarBytes);
 
@@ -79,7 +82,7 @@ async function onAvatarChange(event: Event) {
     await owner.setAvatar(file);
   } catch (caught) {
     clearLocalPreview();
-    showToast(caught instanceof Error ? caught.message : "Avatar upload failed.", "error");
+    showToast(caught instanceof Error ? caught.message : t.avatarFailed, "error");
   } finally {
     loading.value = false;
   }
@@ -87,13 +90,13 @@ async function onAvatarChange(event: Event) {
 
 function validateAvatar(file: File) {
   if (file.size <= 0) {
-    return "Avatar image must not be empty.";
+    return t.avatarEmpty;
   }
   if (file.size > maxAvatarBytes) {
-    return `Avatar image must be ${maxAvatarMegabytes} MB or smaller.`;
+    return `${t.avatarTooLargePrefix} ${maxAvatarMegabytes} ${t.avatarTooLargeSuffix}`;
   }
   if (file.type !== "image/png" && file.type !== "image/jpeg") {
-    return "Choose a PNG or JPEG avatar.";
+    return t.avatarType;
   }
   return "";
 }
@@ -114,14 +117,14 @@ function clearLocalPreview() {
 <template>
   <div class="profile-avatar-panel" aria-labelledby="avatar-title">
     <div class="profile-avatar-panel__head">
-      <h3 id="avatar-title">Avatar</h3>
-      <p>Click the avatar to replace it. PNG or JPEG up to {{ maxAvatarMegabytes }} MB.</p>
+      <h3 id="avatar-title">{{ t.avatarTitle }}</h3>
+      <p>{{ t.avatarCopyPrefix }} {{ maxAvatarMegabytes }} {{ t.avatarCopySuffix }}</p>
     </div>
 
     <label
       class="avatar-uploader"
       :class="{ 'avatar-uploader--loading': loading, 'avatar-uploader--disabled': !owner.isAuthenticated }"
-      aria-label="Upload new avatar"
+      :aria-label="t.avatarUploadLabel"
     >
       <input type="file" accept="image/png,image/jpeg" :disabled="loading || !owner.isAuthenticated" @change="onAvatarChange" />
       <span class="avatar-preview avatar-preview--interactive">
@@ -129,13 +132,13 @@ function clearLocalPreview() {
         <span v-else>{{ initials }}</span>
         <span class="avatar-uploader__overlay" aria-hidden="true">
           <Icon :node="ImagePlusIcon" />
-          <span>{{ loading ? "Uploading" : "Change" }}</span>
+          <span>{{ loading ? t.avatarUploading : t.avatarChange }}</span>
         </span>
       </span>
     </label>
 
     <p class="profile-avatar-panel__hint">
-      New uploads replace the current avatar. Old avatar media is removed after the server accepts the new file.
+      {{ t.avatarHint }}
     </p>
   </div>
 </template>
