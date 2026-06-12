@@ -188,7 +188,7 @@ LIMIT $1`, strings.Join(conditions, " AND "), sortExpr)
 	return page, nil
 }
 
-func (r ContentRepository) GetPublished(ctx context.Context, contentID string) (content.PublicDetail, error) {
+func (r ContentRepository) GetPublished(ctx context.Context, contentID string, viewerUserID string) (content.PublicDetail, error) {
 	var item content.PublicDetail
 	var tagsJSON string
 	var galleryJSON string
@@ -220,6 +220,12 @@ SELECT
   ci.likes_count,
   ci.downloads_count,
   ci.comments_count,
+  EXISTS (
+    SELECT 1
+    FROM likes viewer_like
+    WHERE viewer_like.content_id = ci.id
+      AND viewer_like.user_id = NULLIF($2, '')::uuid
+  ) AS liked_by_me,
   file.unlock_password_ciphertext,
   file.file_size,
   file.file_hash_sha256,
@@ -270,7 +276,7 @@ WHERE ci.id = $1::uuid
   AND ci.deleted_at IS NULL
   AND ci.hidden_at IS NULL
   AND ci.published_at IS NOT NULL
-GROUP BY ci.id, c.slug, c.name, u.id, u.username, u.display_name, author_avatar.id, primary_image.id, file.unlock_password_ciphertext, file.file_size, file.file_hash_sha256, file.original_filename, gallery.images`, contentID).Scan(
+GROUP BY ci.id, c.slug, c.name, u.id, u.username, u.display_name, author_avatar.id, primary_image.id, file.unlock_password_ciphertext, file.file_size, file.file_hash_sha256, file.original_filename, gallery.images`, contentID, viewerUserID).Scan(
 		&item.ID,
 		&item.Slug,
 		&item.Title,
@@ -289,6 +295,7 @@ GROUP BY ci.id, c.slug, c.name, u.id, u.username, u.display_name, author_avatar.
 		&item.LikesCount,
 		&item.DownloadsCount,
 		&item.CommentsCount,
+		&item.LikedByMe,
 		&encryptedPassword,
 		&fileSize,
 		&fileHash,

@@ -113,7 +113,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	openAPIHandler := openapihandler.New()
 	categoryHandler := categoryhandler.New(deps.CategoryStore)
 	tagHandler := taghandler.New(deps.TagStore)
-	contentHandler := contenthandler.New(deps.ContentStore)
+	contentHandler := contenthandler.New(deps.ContentStore, deps.UserStore)
 	searchHandler := searchhandler.New(deps.SearchClient, deps.SearchStore)
 	socialHandler := socialhandler.New(deps.SocialStore, deps.RateLimiter, cfg.RateLimits)
 	downloadHandler := downloadhandler.New(cfg, deps.DownloadStore, deps.ObjectStore)

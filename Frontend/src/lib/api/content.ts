@@ -43,8 +43,8 @@ export async function listPublicContent(filter: CatalogFilter): Promise<APIListR
   return apiGet<APIListResponse<PublicContentItem>>(`${endpoint}${query ? `?${query}` : ""}`);
 }
 
-export async function getPublicContent(contentID: string): Promise<PublicContentDetail> {
-  const response = await apiGet<{ data: PublicContentDetail }>(`/content/${contentID}`);
+export async function getPublicContent(contentID: string, init?: RequestInit): Promise<PublicContentDetail> {
+  const response = await apiGet<{ data: PublicContentDetail }>(`/content/${contentID}`, init);
   return response.data;
 }
 

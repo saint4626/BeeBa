@@ -46,6 +46,7 @@ const CloseIcon = X as IconNode;
 const props = defineProps<{
   contentId: string;
   initialLikes: number;
+  initialLiked: boolean;
   loginHref: string;
   locale?: Locale;
 }>();
@@ -58,7 +59,7 @@ const body = ref("");
 const reason = ref("");
 const details = ref("");
 const likes = ref(props.initialLikes);
-const liked = ref(false);
+const liked = ref(props.initialLiked);
 const loading = ref(false);
 const error = ref("");
 const commentDialogOpen = ref(false);

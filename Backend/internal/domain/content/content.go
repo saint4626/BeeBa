@@ -25,8 +25,9 @@ type PublicItem struct {
 
 type PublicDetail struct {
 	PublicItem
-	File    *PublicFile `json:"file,omitempty"`
-	Gallery []Image     `json:"gallery"`
+	File      *PublicFile `json:"file,omitempty"`
+	Gallery   []Image     `json:"gallery"`
+	LikedByMe bool        `json:"liked_by_me"`
 }
 
 type PublicFile struct {

@@ -89,6 +89,7 @@ export interface PublicContentFile {
 export interface PublicContentDetail extends PublicContentItem {
   file?: PublicContentFile;
   gallery: PublicContentImage[];
+  liked_by_me: boolean;
 }
 
 export interface PublicComment {

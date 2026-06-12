@@ -2399,6 +2399,7 @@ components:
         - type: object
           required:
             - gallery
+            - liked_by_me
           properties:
             file:
               $ref: "#/components/schemas/PublicContentFile"
@@ -2406,6 +2407,9 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/PublicContentImage"
+            liked_by_me:
+              type: boolean
+              description: True when the authenticated viewer has liked this content; false for anonymous viewers.
     PublicContentFile:
       type: object
       required:

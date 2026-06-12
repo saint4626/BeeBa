@@ -25,16 +25,21 @@
 }
 
 .auth-nav__menu summary {
+  position: relative;
   width: 38px;
   height: 38px;
   display: grid;
   place-items: center;
+  place-content: center;
   border: 1px solid rgba(0, 0, 0, 0.22);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.22);
   color: var(--palette-black);
   cursor: pointer;
   list-style: none;
+  overflow: hidden;
+  padding: 0;
+  line-height: 1;
   transition:
     background var(--motion-fast),
     border-color var(--motion-fast),
@@ -54,6 +59,20 @@
   display: block;
   border-radius: inherit;
   object-fit: cover;
+}
+
+.auth-nav__menu summary [data-auth-initials] {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding-top: 1px;
+  pointer-events: none;
+  text-align: center;
 }
 
 .auth-nav__menu summary::-webkit-details-marker {

@@ -10,7 +10,10 @@ import (
 	"time"
 	"unicode"
 
+	authdomain "beeba.org/internal/domain/auth"
 	domain "beeba.org/internal/domain/content"
+	"beeba.org/internal/http/middleware/authz"
+	"beeba.org/internal/security/tokens"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -26,15 +29,24 @@ var ErrUnavailable = errors.New("content repository unavailable")
 
 type Store interface {
 	ListPublished(ctx context.Context, filter domain.ListFilter) (domain.Page, error)
-	GetPublished(ctx context.Context, contentID string) (domain.PublicDetail, error)
+	GetPublished(ctx context.Context, contentID string, viewerUserID string) (domain.PublicDetail, error)
+}
+
+type AuthStore interface {
+	FindByAccessTokenHash(ctx context.Context, tokenHash string, now time.Time) (authdomain.SessionWithUser, error)
 }
 
 type Handler struct {
-	store Store
+	store     Store
+	authStore AuthStore
 }
 
-func New(store Store) Handler {
-	return Handler{store: store}
+func New(store Store, authStore ...AuthStore) Handler {
+	var optionalAuthStore AuthStore
+	if len(authStore) > 0 {
+		optionalAuthStore = authStore[0]
+	}
+	return Handler{store: store, authStore: optionalAuthStore}
 }
 
 func (h Handler) List(c fiber.Ctx) error {
@@ -79,7 +91,7 @@ func (h Handler) Detail(c fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
 	defer cancel()
 
-	item, err := h.store.GetPublished(ctx, contentID)
+	item, err := h.store.GetPublished(ctx, contentID, h.viewerUserID(ctx, c))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "Content item not found")
 	}
@@ -87,6 +99,24 @@ func (h Handler) Detail(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to load content")
 	}
 	return c.JSON(fiber.Map{"data": item})
+}
+
+func (h Handler) viewerUserID(ctx context.Context, c fiber.Ctx) string {
+	if h.authStore == nil {
+		return ""
+	}
+	token, ok := authz.TokenFromRequest(c)
+	if !ok {
+		return ""
+	}
+	session, err := h.authStore.FindByAccessTokenHash(ctx, tokens.Hash(token), time.Now().UTC())
+	if err != nil {
+		return ""
+	}
+	if session.SessionID == "" || session.User.ID == "" || session.DeletedAt != nil || session.BannedAt != nil {
+		return ""
+	}
+	return session.User.ID
 }
 
 func parseFilter(c fiber.Ctx) (domain.ListFilter, error) {

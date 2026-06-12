@@ -36,7 +36,8 @@ if (!id) {
 }
 
 try {
-  item = await getPublicContent(id);
+  const cookie = Astro.request.headers.get("cookie");
+  item = await getPublicContent(id, cookie ? { headers: { Cookie: cookie } } : undefined);
 } catch (caught) {
   if (caught instanceof Error && caught.message.toLowerCase().includes("not found")) {
     return Astro.redirect(localizedPath(locale, "/404"), 302);
@@ -244,7 +245,7 @@ function categoryName() {
         </section>
 
         <section class="detail-discussion" aria-label={t.content.discussionLabel}>
-          <SocialPanel contentId={item.id} initialLikes={item.likes_count} loginHref={loginHref} locale={locale} client:load />
+          <SocialPanel contentId={item.id} initialLikes={item.likes_count} initialLiked={item.liked_by_me} loginHref={loginHref} locale={locale} client:load />
         </section>
       </>
     )}

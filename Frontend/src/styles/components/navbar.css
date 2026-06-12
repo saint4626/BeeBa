@@ -70,6 +70,8 @@
 }
 
 .global-search {
+  --global-search-scope-trigger-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
+
   width: min(560px, 100%);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 44px;
@@ -101,8 +103,12 @@
 .global-search__scope summary {
   min-height: 38px;
   height: 38px;
-  border-radius: 0;
   padding: 0 12px 0 16px;
+}
+
+.global-search .global-search__scope summary {
+  overflow: hidden;
+  border-radius: var(--global-search-scope-trigger-radius);
 }
 
 .global-search__scope summary:hover,
