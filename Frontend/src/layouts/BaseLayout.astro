@@ -25,8 +25,7 @@ const {
 const site = Astro.site ?? new URL("http://localhost:4321");
 const canonical = new URL(canonicalPath, site);
 const brandLogo256 = "/brand/beeba-logo-256.webp";
-const brandLogo1024 = "/brand/beeba-logo-1024.webp";
-const socialImage = new URL(brandLogo1024, site);
+const socialImage = new URL("/OG-Image.png", site);
 const runtimeEnv = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env;
 const statusURL = runtimeEnv?.PUBLIC_STATUS_URL ?? PUBLIC_STATUS_URL;
 const locale = normalizeLocale(Astro.currentLocale);
@@ -38,6 +37,7 @@ const catalogPath = localizedPath(locale, "/catalog");
 const apiPath = localizedPath(locale, "/api-reference");
 const uploadPath = localizedPath(locale, "/upload");
 const loginPath = localizedPath(locale, "/login");
+const uploadLoginPath = `${loginPath}?next=${encodeURIComponent(uploadPath)}`;
 const profilePath = localizedPath(locale, "/profile");
 const moderationPath = localizedPath(locale, "/admin/moderation");
 const requestCookie = Astro.request.headers.get("cookie") ?? "";
@@ -104,7 +104,7 @@ const authNavUser = authUser
 ---
 
 <!doctype html>
-<html lang={locale}>
+<html lang={locale} class="beeba-motion">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="/favicon.ico" />
@@ -113,54 +113,28 @@ const authNavUser = authUser
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
     <link rel="icon" type="image/webp" sizes="256x256" href={brandLogo256} />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <style is:inline>
-      @font-face {
-        font-family: "Varela";
-        font-style: normal;
-        font-weight: 400;
-        font-display: block;
-        src: url("/fonts/varela-v17-latin.ttf") format("truetype");
-      }
-
-      :root {
-        color-scheme: dark;
-        background: #0f0f0f;
-      }
-
-      html,
-      body {
-        margin: 0;
-        min-width: 320px;
-        background: #0f0f0f;
-        color: #ffffff;
-        font-family: Varela, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-
-      body {
-        min-height: 100vh;
-      }
-    </style>
     <link rel="preload" href="/fonts/varela-v17-latin.ttf" as="font" type="font/ttf" crossorigin />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical.href} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical.href} />
     <meta property="og:image" content={socialImage.href} />
-    <meta property="og:image:type" content="image/webp" />
-    <meta property="og:image:width" content="1024" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:secure_url" content={socialImage.href} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1731" />
+    <meta property="og:image:height" content="909" />
+    <meta property="og:image:alt" content="BeeBa Basis VR content catalog" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={socialImage.href} />
-    <script is:inline>
-      document.documentElement.classList.add("beeba-motion");
-    </script>
+    <meta name="twitter:image:alt" content="BeeBa Basis VR content catalog" />
   </head>
   <body>
     <div class="page-progress" aria-hidden="true" data-page-progress>
@@ -204,11 +178,11 @@ const authNavUser = authUser
               <span>{t.nav.manage}</span>
             </a>
             <a
-              class:list={["button button--primary auth-nav__upload", !authUser && "button--disabled"]}
-              aria-disabled={authUser ? "false" : "true"}
-              href={authUser ? uploadPath : undefined}
+              class="button button--primary auth-nav__upload"
+              href={authUser ? uploadPath : uploadLoginPath}
               data-auth-upload
               data-upload-href={uploadPath}
+              data-login-href={uploadLoginPath}
             >
               <LucideIcon node={Upload} size={16} />
               <span>{t.nav.upload}</span>

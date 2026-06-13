@@ -1,6 +1,11 @@
 package content
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrStorageQuotaExceeded = errors.New("storage quota exceeded")
 
 type PublicItem struct {
 	ID             string     `json:"id"`
@@ -143,4 +148,9 @@ type Page struct {
 type OwnerPage struct {
 	Items      []OwnerItem
 	NextCursor *Cursor
+}
+
+type OwnerStorageUsage struct {
+	UsedBytes  int64 `json:"used_bytes"`
+	LimitBytes int64 `json:"limit_bytes"`
 }

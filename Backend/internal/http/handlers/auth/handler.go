@@ -8,12 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"beeba.org/internal/config"
 	authdomain "beeba.org/internal/domain/auth"
 	"beeba.org/internal/domain/users"
 	"beeba.org/internal/http/middleware/authz"
 	"beeba.org/internal/repository/postgres"
 	"beeba.org/internal/security/password"
 	"beeba.org/internal/security/tokens"
+	"beeba.org/internal/security/turnstile"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -23,6 +25,8 @@ type UserStore interface {
 	Create(ctx context.Context, input users.CreateInput) (users.PublicUser, error)
 	VerifyEmail(ctx context.Context, tokenHash string, ipAddress string, userAgent string) (users.EmailVerificationResult, error)
 	RequestEmailVerification(ctx context.Context, input users.EmailVerificationRequestInput) (users.EmailVerificationResult, error)
+	ConfirmPasswordChange(ctx context.Context, tokenHash string, ipAddress string, userAgent string) (users.PasswordChangeConfirmResult, error)
+	ConfirmEmailChange(ctx context.Context, tokenHash string, ipAddress string, userAgent string) (users.EmailChangeConfirmResult, error)
 	FindByEmailForLogin(ctx context.Context, email string) (authdomain.UserWithPassword, error)
 	CreateSession(ctx context.Context, input authdomain.SessionInput) error
 	FindByAccessTokenHash(ctx context.Context, tokenHash string, now time.Time) (authdomain.SessionWithUser, error)
@@ -32,18 +36,25 @@ type UserStore interface {
 }
 
 type Handler struct {
-	users UserStore
+	cfg       config.Config
+	users     UserStore
+	turnstile *turnstile.Verifier
 }
 
-func New(users UserStore) Handler {
-	return Handler{users: users}
+func New(cfg config.Config, users UserStore) Handler {
+	var verifier *turnstile.Verifier
+	if strings.TrimSpace(cfg.TurnstileSecretKey) != "" {
+		verifier = turnstile.New(cfg.TurnstileSecretKey, cfg.TurnstileVerifyURL)
+	}
+	return Handler{cfg: cfg, users: users, turnstile: verifier}
 }
 
 type registerRequest struct {
-	Email       string  `json:"email"`
-	Username    string  `json:"username"`
-	DisplayName *string `json:"display_name"`
-	Password    string  `json:"password"`
+	Email          string  `json:"email"`
+	Username       string  `json:"username"`
+	DisplayName    *string `json:"display_name"`
+	Password       string  `json:"password"`
+	TurnstileToken string  `json:"turnstile_token"`
 }
 
 type loginRequest struct {
@@ -79,6 +90,9 @@ func (h Handler) Register(c fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+	if err := h.verifyTurnstile(c, req.TurnstileToken); err != nil {
+		return err
+	}
 
 	hash, err := password.Hash(req.Password)
 	if err != nil {
@@ -90,7 +104,9 @@ func (h Handler) Register(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create user")
 	}
 	input.EmailVerificationTokenHash = tokens.Hash(verificationToken)
+	input.EmailVerificationToken = verificationToken
 	input.EmailVerificationTokenExpiresAt = time.Now().UTC().Add(24 * time.Hour)
+	input.EmailDailyLimit = h.cfg.EmailDailyLimit
 
 	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
 	defer cancel()
@@ -99,6 +115,9 @@ func (h Handler) Register(c fiber.Ctx) error {
 	if err != nil {
 		if errors.Is(err, postgres.ErrUserConflict) {
 			return fiber.NewError(fiber.StatusConflict, "Email or username already exists")
+		}
+		if errors.Is(err, postgres.ErrEmailDailyLimitReached) {
+			return fiber.NewError(fiber.StatusTooManyRequests, "email verification is temporarily unavailable")
 		}
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create user")
 	}
@@ -140,6 +159,68 @@ func (h Handler) VerifyEmail(c fiber.Ctx) error {
 	})
 }
 
+func (h Handler) ConfirmPasswordChange(c fiber.Ctx) error {
+	if h.users == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "user repository unavailable")
+	}
+	var req verifyEmailRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+	token := strings.TrimSpace(req.Token)
+	if !strings.HasPrefix(token, "bb_pc_") {
+		return fiber.NewError(fiber.StatusBadRequest, "token is invalid")
+	}
+	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+	defer cancel()
+	result, err := h.users.ConfirmPasswordChange(ctx, tokens.Hash(token), c.IP(), c.Get("User-Agent"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusBadRequest, "token is invalid or expired")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to confirm password change")
+	}
+	return c.JSON(fiber.Map{
+		"data": result.User,
+		"meta": fiber.Map{
+			"sessions_revoked": true,
+		},
+	})
+}
+
+func (h Handler) ConfirmEmailChange(c fiber.Ctx) error {
+	if h.users == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "user repository unavailable")
+	}
+	var req verifyEmailRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+	token := strings.TrimSpace(req.Token)
+	if !strings.HasPrefix(token, "bb_ec_") {
+		return fiber.NewError(fiber.StatusBadRequest, "token is invalid")
+	}
+	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+	defer cancel()
+	result, err := h.users.ConfirmEmailChange(ctx, tokens.Hash(token), c.IP(), c.Get("User-Agent"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusBadRequest, "token is invalid or expired")
+	}
+	if errors.Is(err, postgres.ErrUserConflict) {
+		return fiber.NewError(fiber.StatusConflict, "Email already exists")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to confirm email change")
+	}
+	return c.JSON(fiber.Map{
+		"data": result.User,
+		"meta": fiber.Map{
+			"previous_email": result.PreviousEmail,
+			"new_email":      result.NewEmail,
+		},
+	})
+}
+
 func (h Handler) ResendEmailVerification(c fiber.Ctx) error {
 	if h.users == nil {
 		return fiber.NewError(fiber.StatusServiceUnavailable, "user repository unavailable")
@@ -155,14 +236,19 @@ func (h Handler) ResendEmailVerification(c fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
 	defer cancel()
 	result, err := h.users.RequestEmailVerification(ctx, users.EmailVerificationRequestInput{
-		UserID:    session.User.ID,
-		TokenHash: tokens.Hash(verificationToken),
-		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
-		IPAddress: c.IP(),
-		UserAgent: c.Get("User-Agent"),
+		UserID:          session.User.ID,
+		TokenHash:       tokens.Hash(verificationToken),
+		Token:           verificationToken,
+		ExpiresAt:       time.Now().UTC().Add(24 * time.Hour),
+		EmailDailyLimit: h.cfg.EmailDailyLimit,
+		IPAddress:       c.IP(),
+		UserAgent:       c.Get("User-Agent"),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "User not found")
+	}
+	if errors.Is(err, postgres.ErrEmailDailyLimitReached) {
+		return fiber.NewError(fiber.StatusTooManyRequests, "email verification is temporarily unavailable")
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to request email verification")
@@ -228,6 +314,29 @@ func (h Handler) Login(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"data": pair,
 	})
+}
+
+func (h Handler) verifyTurnstile(c fiber.Ctx, token string) error {
+	if !h.cfg.TurnstileRequired && h.turnstile == nil {
+		return nil
+	}
+	if strings.TrimSpace(token) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "human verification is required")
+	}
+	if h.turnstile == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "human verification is unavailable")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
+	defer cancel()
+	result, err := h.turnstile.Verify(ctx, token, c.IP())
+	if err != nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "human verification is unavailable")
+	}
+	if !result.Success {
+		return fiber.NewError(fiber.StatusForbidden, "human verification failed")
+	}
+	return nil
 }
 
 func (h Handler) Me(c fiber.Ctx) error {

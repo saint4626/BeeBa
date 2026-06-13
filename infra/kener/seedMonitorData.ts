@@ -57,6 +57,7 @@ const defaultMonitorSettings = {
 };
 
 const monitorIcon = "/beeba-logo.webp";
+const storageHealthURL = process.env.KENER_STORAGE_HEALTH_URL ?? "http://minio:9000/minio/health/ready";
 
 const seedMonitorData = [
   {
@@ -147,7 +148,7 @@ const seedMonitorData = [
     monitor_type: "API",
     down_trigger: null,
     degraded_trigger: null,
-    type_data: apiTypeData("http://minio:9000/minio/health/ready"),
+    type_data: apiTypeData(storageHealthURL),
     day_degraded_minimum_count: 1,
     day_down_minimum_count: 1,
     include_degraded_in_downtime: "NO",

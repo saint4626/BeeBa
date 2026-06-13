@@ -561,9 +561,9 @@ paths:
           $ref: "#/components/responses/Error"
   /api/v1/me/password:
     patch:
-      summary: Change the authenticated user's password
+      summary: Request authenticated user's password change
       operationId: changeCurrentUserPassword
-      description: Verifies the current password, stores a new Argon2id hash, and revokes other active sessions for the same user.
+      description: Verifies the current password and queues an email confirmation. The new Argon2id hash is stored only after the confirmation token is submitted.
       security:
         - bearerAuth: []
         - cookieAuth: []
@@ -574,8 +574,67 @@ paths:
             schema:
               $ref: "#/components/schemas/PasswordChangeRequest"
       responses:
-        "204":
-          description: Password changed. Other active sessions were revoked.
+        "202":
+          description: Password change confirmation email queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - confirmation_sent
+                    properties:
+                      confirmation_sent:
+                        type: boolean
+                        const: true
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/email:
+    patch:
+      summary: Request authenticated user's email change
+      operationId: changeCurrentUserEmail
+      description: Verifies the current password and queues a confirmation link to the new address. The account email is updated only after the confirmation token is submitted.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailChangeRequest"
+      responses:
+        "202":
+          description: Email change confirmation email queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - confirmation_sent
+                      - pending_email
+                    properties:
+                      confirmation_sent:
+                        type: boolean
+                        const: true
+                      pending_email:
+                        type: string
+                        format: email
         default:
           $ref: "#/components/responses/Error"
   /api/v1/me/content:
@@ -634,6 +693,7 @@ paths:
                 required:
                   - data
                   - pagination
+                  - storage
                 properties:
                   data:
                     type: array
@@ -641,6 +701,8 @@ paths:
                       $ref: "#/components/schemas/OwnerContentItem"
                   pagination:
                     $ref: "#/components/schemas/CursorPagination"
+                  storage:
+                    $ref: "#/components/schemas/OwnerStorageUsage"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/me/content/{content_id}:
@@ -995,6 +1057,78 @@ paths:
                     properties:
                       already_verified:
                         type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/password/confirm:
+    post:
+      summary: Confirm password change
+      operationId: confirmPasswordChange
+      description: Applies the pending password hash and revokes active sessions after a valid email token is submitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenConfirmationRequest"
+      responses:
+        "200":
+          description: Password changed and active sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - sessions_revoked
+                    properties:
+                      sessions_revoked:
+                        type: boolean
+                        const: true
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/email/change/confirm:
+    post:
+      summary: Confirm email change
+      operationId: confirmEmailChange
+      description: Updates the account email and marks it verified after a valid token sent to the new address is submitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenConfirmationRequest"
+      responses:
+        "200":
+          description: Email address changed and verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicUser"
+                  meta:
+                    type: object
+                    required:
+                      - previous_email
+                      - new_email
+                    properties:
+                      previous_email:
+                        type: string
+                        format: email
+                      new_email:
+                        type: string
+                        format: email
         default:
           $ref: "#/components/responses/Error"
   /api/v1/auth/email/resend:
@@ -2670,6 +2804,20 @@ components:
         updated_at:
           type: string
           format: date-time
+    OwnerStorageUsage:
+      type: object
+      required:
+        - used_bytes
+        - limit_bytes
+      properties:
+        used_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
     OwnerContentUpdateRequest:
       type: object
       minProperties: 1
@@ -2720,6 +2868,21 @@ components:
           type: string
           minLength: 12
           maxLength: 128
+          format: password
+    EmailChangeRequest:
+      type: object
+      required:
+        - current_password
+        - new_email
+      additionalProperties: false
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+          format: password
+        new_email:
+          type: string
+          format: email
     OwnerContentFile:
       type: object
       required:
@@ -3015,6 +3178,10 @@ components:
           minLength: 12
           maxLength: 128
           format: password
+        turnstile_token:
+          type: string
+          maxLength: 4096
+          description: Cloudflare Turnstile token. Required when Turnstile protection is enabled on the API.
     PublicUser:
       type: object
       required:
@@ -3398,6 +3565,15 @@ components:
         token:
           type: string
           pattern: "^bb_ev_.+"
+    TokenConfirmationRequest:
+      type: object
+      required:
+        - token
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          pattern: "^bb_(pc|ec)_.+"
     TokenPair:
       type: object
       required:

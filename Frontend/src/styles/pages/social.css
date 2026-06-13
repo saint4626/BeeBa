@@ -114,29 +114,36 @@
 .comment-avatar {
   width: 36px;
   height: 36px;
-  display: inline-grid;
+  display: grid;
   place-items: center;
   border-radius: var(--radius-full);
   background: rgba(255, 215, 0, 0.16);
   color: var(--palette-mint);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
 }
 
-.comment-item__head strong,
-.comment-item__head span {
+.comment-item__meta {
+  min-width: 0;
+}
+
+.comment-item__meta strong,
+.comment-item__meta span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.comment-item__head strong {
+.comment-item__meta strong {
   color: var(--color-text);
   font-size: 14px;
 }
 
-.comment-item__head span {
+.comment-item__meta span {
   color: var(--color-text-muted);
   font-size: 12px;
 }

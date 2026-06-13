@@ -25,16 +25,18 @@ const (
 
 type ContentStore interface {
 	ListOwned(ctx context.Context, ownerID string, filter content.OwnerListFilter) (content.OwnerPage, error)
+	OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (content.OwnerStorageUsage, error)
 	UpdateOwned(ctx context.Context, ownerID string, contentID string, input content.OwnerUpdateInput) (content.OwnerItem, error)
 	DeleteOwned(ctx context.Context, ownerID string, contentID string) error
 }
 
 type ContentHandler struct {
-	store ContentStore
+	store                 ContentStore
+	userStorageQuotaBytes int64
 }
 
-func NewContentHandler(store ContentStore) ContentHandler {
-	return ContentHandler{store: store}
+func NewContentHandler(store ContentStore, userStorageQuotaBytes int64) ContentHandler {
+	return ContentHandler{store: store, userStorageQuotaBytes: userStorageQuotaBytes}
 }
 
 func (h ContentHandler) List(c fiber.Ctx) error {
@@ -58,6 +60,10 @@ func (h ContentHandler) List(c fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to load owned content")
 	}
+	storage, err := h.store.OwnerStorageUsage(ctx, session.User.ID, h.userStorageQuotaBytes)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to load storage usage")
+	}
 
 	return c.JSON(fiber.Map{
 		"data": page.Items,
@@ -65,6 +71,7 @@ func (h ContentHandler) List(c fiber.Ctx) error {
 			"next_cursor": encodeOwnedCursor(page.NextCursor),
 			"limit":       filter.Limit,
 		},
+		"storage": storage,
 	})
 }
 

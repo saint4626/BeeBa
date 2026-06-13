@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -17,6 +18,7 @@ const (
 	defaultCORSOrigins      = "http://localhost:4321,http://127.0.0.1:4321"
 	defaultMaxUploadBytes   = 2 * 1024 * 1024 * 1024
 	defaultMaxImageBytes    = 8 * 1024 * 1024
+	defaultUserStorageQuota = 10 * 1024 * 1024 * 1024
 	defaultReadinessTimeout = 2 * time.Second
 	defaultShutdownTimeout  = 10 * time.Second
 	defaultUploadTimeout    = 20 * time.Minute
@@ -33,6 +35,10 @@ const (
 	defaultContentIndex     = "beeba_content"
 	defaultClamAVTimeout    = 20 * time.Minute
 	defaultProxyHeader      = "X-Forwarded-For"
+	defaultEmailFrom        = "BeeBa <hello@beeba.org>"
+	defaultEmailDailyLimit  = 90
+	defaultResendAPIBaseURL = "https://api.resend.com"
+	defaultTurnstileURL     = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 )
 
 type RateLimitRule struct {
@@ -52,6 +58,7 @@ type RateLimitConfig struct {
 	AuthEmailVerify    RateLimitRule
 	AuthRefresh        RateLimitRule
 	AuthEmailResend    RateLimitRule
+	AuthAccountChange  RateLimitRule
 	SocialComments     RateLimitRule
 	SocialLikes        RateLimitRule
 	SocialReports      RateLimitRule
@@ -70,6 +77,7 @@ var defaultRateLimits = RateLimitConfig{
 	AuthEmailVerify:    RateLimitRule{Limit: 30, Window: time.Hour},
 	AuthRefresh:        RateLimitRule{Limit: 120, Window: 15 * time.Minute},
 	AuthEmailResend:    RateLimitRule{Limit: 5, Window: time.Hour},
+	AuthAccountChange:  RateLimitRule{Limit: 5, Window: time.Hour},
 	SocialComments:     RateLimitRule{Limit: 10, Window: time.Hour},
 	SocialLikes:        RateLimitRule{Limit: 60, Window: time.Hour},
 	SocialReports:      RateLimitRule{Limit: 5, Window: time.Hour},
@@ -102,6 +110,7 @@ type Config struct {
 	SecretBoxKey            string
 	MaxUploadBytes          int64
 	MaxImageBytes           int64
+	UserStorageQuotaBytes   int64
 	RequestBodyLimit        int
 	ReadinessTimeout        time.Duration
 	ShutdownTimeout         time.Duration
@@ -114,6 +123,15 @@ type Config struct {
 	TrustProxyPrivate       bool
 	TrustProxyLoopback      bool
 	ProxyHeader             string
+	EmailDeliveryEnabled    bool
+	EmailFrom               string
+	EmailReplyTo            string
+	EmailDailyLimit         int
+	ResendAPIKey            string
+	ResendAPIBaseURL        string
+	TurnstileRequired       bool
+	TurnstileSecretKey      string
+	TurnstileVerifyURL      string
 	RateLimits              RateLimitConfig
 }
 
@@ -144,6 +162,7 @@ func Load() (Config, error) {
 		SecretBoxKey:            envString("BEEBA_SECRET_BOX_KEY", ""),
 		MaxUploadBytes:          envInt64("BEEBA_MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
 		MaxImageBytes:           envInt64("BEEBA_MAX_IMAGE_UPLOAD_BYTES", defaultMaxImageBytes),
+		UserStorageQuotaBytes:   envInt64("BEEBA_USER_STORAGE_QUOTA_BYTES", defaultUserStorageQuota),
 		RequestBodyLimit:        envInt("BEEBA_REQUEST_BODY_LIMIT", defaultRequestBodyLimit),
 		ReadinessTimeout:        envDuration("BEEBA_READINESS_TIMEOUT", defaultReadinessTimeout),
 		ShutdownTimeout:         envDuration("BEEBA_SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
@@ -156,6 +175,15 @@ func Load() (Config, error) {
 		TrustProxyPrivate:       envBool("BEEBA_TRUST_PROXY_PRIVATE", false),
 		TrustProxyLoopback:      envBool("BEEBA_TRUST_PROXY_LOOPBACK", false),
 		ProxyHeader:             envString("BEEBA_PROXY_HEADER", defaultProxyHeader),
+		EmailDeliveryEnabled:    envBool("BEEBA_EMAIL_DELIVERY_ENABLED", false),
+		EmailFrom:               envString("BEEBA_EMAIL_FROM", defaultEmailFrom),
+		EmailReplyTo:            envString("BEEBA_EMAIL_REPLY_TO", ""),
+		EmailDailyLimit:         envInt("BEEBA_EMAIL_DAILY_LIMIT", defaultEmailDailyLimit),
+		ResendAPIKey:            envString("BEEBA_RESEND_API_KEY", ""),
+		ResendAPIBaseURL:        envString("BEEBA_RESEND_API_BASE_URL", defaultResendAPIBaseURL),
+		TurnstileRequired:       envBool("BEEBA_TURNSTILE_REQUIRED", false),
+		TurnstileSecretKey:      envString("BEEBA_TURNSTILE_SECRET_KEY", ""),
+		TurnstileVerifyURL:      envString("BEEBA_TURNSTILE_VERIFY_URL", defaultTurnstileURL),
 		RateLimits:              loadRateLimits(),
 	}
 
@@ -179,6 +207,9 @@ func (c Config) validate() error {
 	}
 	if c.MaxImageBytes <= 0 {
 		return fmt.Errorf("BEEBA_MAX_IMAGE_UPLOAD_BYTES must be greater than 0")
+	}
+	if c.UserStorageQuotaBytes <= 0 {
+		return fmt.Errorf("BEEBA_USER_STORAGE_QUOTA_BYTES must be greater than 0")
 	}
 	if c.RequestBodyLimit <= 0 {
 		return fmt.Errorf("BEEBA_REQUEST_BODY_LIMIT must be greater than 0")
@@ -204,6 +235,9 @@ func (c Config) validate() error {
 	if c.ClamAVTimeout <= 0 {
 		return fmt.Errorf("BEEBA_CLAMAV_TIMEOUT must be greater than 0")
 	}
+	if c.EmailDailyLimit <= 0 {
+		return fmt.Errorf("BEEBA_EMAIL_DAILY_LIMIT must be greater than 0")
+	}
 	if err := c.RateLimits.validate(); err != nil {
 		return err
 	}
@@ -217,6 +251,9 @@ func (c Config) validate() error {
 		if _, err := url.ParseRequestURI(origin); err != nil {
 			return fmt.Errorf("BEEBA_CORS_ALLOWED_ORIGINS contains invalid origin %q: %w", origin, err)
 		}
+	}
+	if err := validateEmailConfig(c); err != nil {
+		return err
 	}
 	if c.IsProduction() {
 		if c.SecretBoxKey == developmentSecretBoxKey {
@@ -250,6 +287,35 @@ func (c Config) validate() error {
 	return nil
 }
 
+func validateEmailConfig(c Config) error {
+	if c.EmailDeliveryEnabled {
+		if strings.TrimSpace(c.ResendAPIKey) == "" {
+			return fmt.Errorf("BEEBA_RESEND_API_KEY is required when BEEBA_EMAIL_DELIVERY_ENABLED is true")
+		}
+		if _, err := mail.ParseAddress(c.EmailFrom); err != nil {
+			return fmt.Errorf("BEEBA_EMAIL_FROM is invalid: %w", err)
+		}
+		if strings.TrimSpace(c.EmailReplyTo) != "" {
+			if _, err := mail.ParseAddress(c.EmailReplyTo); err != nil {
+				return fmt.Errorf("BEEBA_EMAIL_REPLY_TO is invalid: %w", err)
+			}
+		}
+		if _, err := url.ParseRequestURI(c.ResendAPIBaseURL); err != nil {
+			return fmt.Errorf("BEEBA_RESEND_API_BASE_URL is invalid: %w", err)
+		}
+	}
+
+	if c.TurnstileRequired && strings.TrimSpace(c.TurnstileSecretKey) == "" {
+		return fmt.Errorf("BEEBA_TURNSTILE_SECRET_KEY is required when BEEBA_TURNSTILE_REQUIRED is true")
+	}
+	if strings.TrimSpace(c.TurnstileSecretKey) != "" {
+		if _, err := url.ParseRequestURI(c.TurnstileVerifyURL); err != nil {
+			return fmt.Errorf("BEEBA_TURNSTILE_VERIFY_URL is invalid: %w", err)
+		}
+	}
+	return nil
+}
+
 func loadRateLimits() RateLimitConfig {
 	return RateLimitConfig{
 		Search:             envRateLimit("BEEBA_RATE_LIMIT_SEARCH", defaultRateLimits.Search),
@@ -263,6 +329,7 @@ func loadRateLimits() RateLimitConfig {
 		AuthEmailVerify:    envRateLimit("BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY", defaultRateLimits.AuthEmailVerify),
 		AuthRefresh:        envRateLimit("BEEBA_RATE_LIMIT_AUTH_REFRESH", defaultRateLimits.AuthRefresh),
 		AuthEmailResend:    envRateLimit("BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND", defaultRateLimits.AuthEmailResend),
+		AuthAccountChange:  envRateLimit("BEEBA_RATE_LIMIT_AUTH_ACCOUNT_CHANGE", defaultRateLimits.AuthAccountChange),
 		SocialComments:     envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_COMMENTS", defaultRateLimits.SocialComments),
 		SocialLikes:        envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_LIKES", defaultRateLimits.SocialLikes),
 		SocialReports:      envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_REPORTS", defaultRateLimits.SocialReports),
@@ -290,6 +357,7 @@ func (r RateLimitConfig) validate() error {
 		"BEEBA_RATE_LIMIT_AUTH_EMAIL_VERIFY":    r.AuthEmailVerify,
 		"BEEBA_RATE_LIMIT_AUTH_REFRESH":         r.AuthRefresh,
 		"BEEBA_RATE_LIMIT_AUTH_EMAIL_RESEND":    r.AuthEmailResend,
+		"BEEBA_RATE_LIMIT_AUTH_ACCOUNT_CHANGE":  r.AuthAccountChange,
 		"BEEBA_RATE_LIMIT_SOCIAL_COMMENTS":      r.SocialComments,
 		"BEEBA_RATE_LIMIT_SOCIAL_LIKES":         r.SocialLikes,
 		"BEEBA_RATE_LIMIT_SOCIAL_REPORTS":       r.SocialReports,

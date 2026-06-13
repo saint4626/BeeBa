@@ -1,5 +1,14 @@
+@font-face {
+  font-family: "Varela";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/varela-v17-latin.ttf") format("truetype");
+}
+
 :root {
   color-scheme: dark;
+  background: #0f0f0f;
   --palette-white: #ffffff;
   --palette-gold: #ffd700;
   --palette-orange: #ffa800;
@@ -89,6 +98,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--color-bg);

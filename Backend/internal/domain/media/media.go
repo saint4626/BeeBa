@@ -3,19 +3,20 @@ package media
 import "time"
 
 type ImageUploadInput struct {
-	OwnerUserID      string
-	ContentID        string
-	Bucket           string
-	StorageKey       string
-	OriginalFilename string
-	AltText          string
-	Width            int
-	Height           int
-	FileSize         int64
-	FileHashSHA256   string
-	MimeTypeDetected string
-	IsPrimary        bool
-	SortOrder        int
+	OwnerUserID       string
+	ContentID         string
+	Bucket            string
+	StorageKey        string
+	OriginalFilename  string
+	AltText           string
+	Width             int
+	Height            int
+	FileSize          int64
+	FileHashSHA256    string
+	MimeTypeDetected  string
+	IsPrimary         bool
+	SortOrder         int
+	StorageQuotaBytes int64
 }
 
 type UploadedImage struct {

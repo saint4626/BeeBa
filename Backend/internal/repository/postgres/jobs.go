@@ -139,6 +139,7 @@ LIMIT $%d`, joinConditions(conditions), limitArg), args...)
 		); err != nil {
 			return jobs.AdminPage{}, fmt.Errorf("scan admin job: %w", err)
 		}
+		job = redactAdminJob(job)
 		items = append(items, job)
 	}
 	if err := rows.Err(); err != nil {
@@ -213,7 +214,7 @@ RETURNING
 		return jobs.AdminJob{}, fmt.Errorf("retry job update: %w", err)
 	}
 
-	beforeJSON, err := json.Marshal(before)
+	beforeJSON, err := json.Marshal(redactAdminJob(before))
 	if err != nil {
 		return jobs.AdminJob{}, fmt.Errorf("marshal retry before: %w", err)
 	}
@@ -242,7 +243,7 @@ VALUES ($1::uuid, 'job.retry', 'worker_job', $2::uuid, $3::jsonb, $4::jsonb, NUL
 	if err := tx.Commit(ctx); err != nil {
 		return jobs.AdminJob{}, fmt.Errorf("commit retry job: %w", err)
 	}
-	return after, nil
+	return redactAdminJob(after), nil
 }
 
 func loadAdminJobForUpdate(ctx context.Context, tx pgx.Tx, jobID string) (jobs.AdminJob, error) {
@@ -283,6 +284,25 @@ FOR UPDATE`, jobID).Scan(
 		return jobs.AdminJob{}, err
 	}
 	return job, nil
+}
+
+func redactAdminJob(job jobs.AdminJob) jobs.AdminJob {
+	if job.QueueName != "email_queue" || len(job.Payload) == 0 {
+		return job
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return job
+	}
+	if _, ok := payload["token"]; ok {
+		payload["token"] = "[redacted]"
+	}
+	redacted, err := json.Marshal(payload)
+	if err != nil {
+		return job
+	}
+	job.Payload = redacted
+	return job
 }
 
 func (r JobRepository) GetContentFileForScan(ctx context.Context, fileID string) (jobs.ContentFileForScan, error) {
@@ -541,6 +561,60 @@ VALUES ('search_index_queue', 'sync_content_search', $1::jsonb)`, string(payload
 	return nil
 }
 
+func (r JobRepository) GetEmailVerificationTokenForSend(ctx context.Context, tokenID string) (jobs.EmailVerificationTokenForSend, error) {
+	var token jobs.EmailVerificationTokenForSend
+	err := r.db.QueryRow(ctx, `
+SELECT id::text, user_id::text, email, expires_at, used_at
+FROM email_verification_tokens
+WHERE id = $1::uuid`, tokenID).Scan(
+		&token.ID,
+		&token.UserID,
+		&token.Email,
+		&token.ExpiresAt,
+		&token.UsedAt,
+	)
+	if err != nil {
+		return jobs.EmailVerificationTokenForSend{}, err
+	}
+	return token, nil
+}
+
+func (r JobRepository) GetPasswordChangeTokenForSend(ctx context.Context, tokenID string) (jobs.PasswordChangeTokenForSend, error) {
+	var token jobs.PasswordChangeTokenForSend
+	err := r.db.QueryRow(ctx, `
+SELECT id::text, user_id::text, email, expires_at, used_at
+FROM password_change_tokens
+WHERE id = $1::uuid`, tokenID).Scan(
+		&token.ID,
+		&token.UserID,
+		&token.Email,
+		&token.ExpiresAt,
+		&token.UsedAt,
+	)
+	if err != nil {
+		return jobs.PasswordChangeTokenForSend{}, err
+	}
+	return token, nil
+}
+
+func (r JobRepository) GetEmailChangeTokenForSend(ctx context.Context, tokenID string) (jobs.EmailChangeTokenForSend, error) {
+	var token jobs.EmailChangeTokenForSend
+	err := r.db.QueryRow(ctx, `
+SELECT id::text, user_id::text, new_email, expires_at, used_at
+FROM email_change_tokens
+WHERE id = $1::uuid`, tokenID).Scan(
+		&token.ID,
+		&token.UserID,
+		&token.NewEmail,
+		&token.ExpiresAt,
+		&token.UsedAt,
+	)
+	if err != nil {
+		return jobs.EmailChangeTokenForSend{}, err
+	}
+	return token, nil
+}
+
 func (r JobRepository) GetContentSearchDocument(ctx context.Context, contentID string) (searchdomain.ContentDocument, error) {
 	var doc searchdomain.ContentDocument
 	var tagsJSON string
@@ -628,7 +702,15 @@ GROUP BY ci.id, c.slug, c.name, u.id, u.username, u.display_name, primary_image.
 func (r JobRepository) MarkSucceeded(ctx context.Context, jobID string) error {
 	tag, err := r.db.Exec(ctx, `
 UPDATE worker_jobs
-SET status = 'succeeded', locked_by = NULL, locked_at = NULL, updated_at = now()
+SET
+  status = 'succeeded',
+  payload = CASE
+    WHEN queue_name = 'email_queue' THEN payload - 'token'
+    ELSE payload
+  END,
+  locked_by = NULL,
+  locked_at = NULL,
+  updated_at = now()
 WHERE id = $1::uuid`, jobID)
 	if err != nil {
 		return fmt.Errorf("mark job succeeded: %w", err)
@@ -651,6 +733,10 @@ func (r JobRepository) MarkFailed(ctx context.Context, job jobs.Job, message str
 UPDATE worker_jobs
 SET
   status = $2,
+  payload = CASE
+    WHEN $2 = 'dead' AND queue_name = 'email_queue' THEN payload - 'token'
+    ELSE payload
+  END,
   last_error = $3,
   next_retry_at = $4,
   locked_by = NULL,
@@ -674,7 +760,15 @@ WHERE id = $1::uuid`,
 func (r JobRepository) markSucceededTx(ctx context.Context, tx pgx.Tx, jobID string) error {
 	tag, err := tx.Exec(ctx, `
 UPDATE worker_jobs
-SET status = 'succeeded', locked_by = NULL, locked_at = NULL, updated_at = now()
+SET
+  status = 'succeeded',
+  payload = CASE
+    WHEN queue_name = 'email_queue' THEN payload - 'token'
+    ELSE payload
+  END,
+  locked_by = NULL,
+  locked_at = NULL,
+  updated_at = now()
 WHERE id = $1::uuid`, jobID)
 	if err != nil {
 		return fmt.Errorf("mark job succeeded: %w", err)

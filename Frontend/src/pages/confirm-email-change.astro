@@ -1,0 +1,18 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import AccountActionConfirmationApp from "../components/auth/AccountActionConfirmationApp.vue";
+import { ui } from "../lib/i18n";
+
+const locale = "en";
+const t = ui[locale];
+---
+
+<BaseLayout
+  title={t.accountConfirm.emailTitle}
+  description={t.accountConfirm.emailDescription}
+  canonicalPath="/confirm-email-change"
+>
+  <section class="page-shell page-shell--narrow">
+    <AccountActionConfirmationApp client:load kind="email" locale={locale} profileHref="/profile" loginHref="/login" />
+  </section>
+</BaseLayout>

@@ -5,11 +5,49 @@
   padding: var(--space-10) var(--page-x);
 }
 
+.auth-page--verification {
+  place-items: start center;
+  align-items: start;
+  padding-top: var(--space-8);
+}
+
+.auth-page--account-action {
+  place-items: start center;
+  align-items: start;
+  padding-top: var(--space-8);
+}
+
 .auth-card {
   width: min(100%, 336px);
   display: grid;
   gap: var(--space-4);
   color: var(--color-text);
+}
+
+.auth-card--verification {
+  width: min(100%, 560px);
+}
+
+.auth-card--account-action {
+  width: min(100%, 560px);
+}
+
+.auth-card--verification .eyebrow {
+  justify-self: center;
+  margin: 0;
+}
+
+.auth-card--account-action .eyebrow {
+  justify-self: center;
+  margin: 0;
+}
+
+.auth-card--verification .message {
+  overflow-wrap: anywhere;
+}
+
+.auth-card--account-action .message {
+  overflow-wrap: anywhere;
 }
 
 .auth-card__brand {
@@ -87,6 +125,13 @@
 .auth-submit:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.auth-turnstile {
+  min-height: 65px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
 .auth-social {

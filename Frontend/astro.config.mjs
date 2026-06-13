@@ -1,13 +1,30 @@
 // @ts-check
 import { defineConfig, envField } from 'astro/config';
 import node from '@astrojs/node';
+import sitemap from '@astrojs/sitemap';
 import vue from '@astrojs/vue';
 
 const chunkSizeWarningLimitKiB = 650;
+const siteURL = process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321';
+const absoluteSiteURL = siteURL.endsWith('/') ? siteURL : `${siteURL}/`;
+const contentSitemapURL = new URL('content-sitemap.xml', absoluteSiteURL).href;
+const sitemapExcludedPathPrefixes = [
+  '/admin',
+  '/content-sitemap.xml',
+  '/confirm-email-change',
+  '/confirm-password-change',
+  '/profile',
+  '/upload',
+  '/verify-email',
+];
+const isSitemapPageAllowed = (page) => {
+  const path = new URL(page).pathname.replace(/^\/ru(?=\/|$)/, '') || '/';
+  return !sitemapExcludedPathPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+};
 
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321',
+  site: siteURL,
   output: 'server',
   env: {
     schema: {
@@ -26,6 +43,7 @@ export default defineConfig({
       PUBLIC_SOCIAL_COMMENT_LIMIT: envField.number({ context: 'client', access: 'public', default: 24 }),
       PUBLIC_ADMIN_PAGE_LIMIT: envField.number({ context: 'client', access: 'public', default: 50 }),
       PUBLIC_ADMIN_POLL_INTERVAL_MS: envField.number({ context: 'client', access: 'public', default: 15_000 }),
+      PUBLIC_TURNSTILE_SITE_KEY: envField.string({ context: 'client', access: 'public', default: '' }),
     },
   },
   build: {
@@ -99,13 +117,17 @@ export default defineConfig({
   },
   security: {
     csp: {
+      scriptDirective: {
+        resources: ["'self'", "https://challenges.cloudflare.com"],
+      },
       directives: [
         "default-src 'self'",
         "base-uri 'self'",
         "object-src 'none'",
         "img-src 'self' data: blob:",
         "font-src 'self'",
-        "connect-src 'self' http://localhost:* http://127.0.0.1:*",
+        "frame-src https://challenges.cloudflare.com",
+        "connect-src 'self' http://localhost:* http://127.0.0.1:* https://challenges.cloudflare.com",
       ],
     },
   },
@@ -122,7 +144,20 @@ export default defineConfig({
       prefixDefaultLocale: false,
     },
   },
-  integrations: [vue({ appEntrypoint: '/src/vue-app' })],
+  integrations: [
+    vue({ appEntrypoint: '/src/vue-app' }),
+    sitemap({
+      customSitemaps: [contentSitemapURL],
+      i18n: {
+        defaultLocale: 'en',
+        locales: {
+          en: 'en',
+          ru: 'ru',
+        },
+      },
+      filter: isSitemapPageAllowed,
+    }),
+  ],
   server: {
     host: true,
     allowedHosts: ['frontend', 'caddy'],

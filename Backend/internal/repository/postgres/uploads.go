@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/upload"
 
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,10 @@ func NewUploadRepository(db *pgxpool.Pool) UploadRepository {
 	return UploadRepository{db: db}
 }
 
+func (r UploadRepository) OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (content.OwnerStorageUsage, error) {
+	return ownerStorageUsage(ctx, r.db, ownerID, limitBytes)
+}
+
 func (r UploadRepository) Create(ctx context.Context, input upload.CreateInput) (upload.Created, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -28,6 +33,9 @@ func (r UploadRepository) Create(ctx context.Context, input upload.CreateInput) 
 	defer tx.Rollback(ctx)
 
 	var created upload.Created
+	if err := ensureOwnerStorageQuota(ctx, tx, input.AuthorID, input.FileSize, input.StorageQuotaBytes); err != nil {
+		return upload.Created{}, err
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, input.AuthorID, input.FileHashSHA256); err != nil {
 		return upload.Created{}, fmt.Errorf("lock duplicate upload check: %w", err)
 	}

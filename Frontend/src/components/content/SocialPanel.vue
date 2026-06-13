@@ -222,7 +222,7 @@ function closeReportDialog() {
       <article v-for="comment in comments" :key="comment.id" class="comment-item">
         <div class="comment-item__head">
           <span class="comment-avatar">{{ (comment.display_name || comment.username).slice(0, 2).toUpperCase() }}</span>
-          <div>
+          <div class="comment-item__meta">
             <strong>{{ comment.display_name || comment.username }}</strong>
             <span>{{ t.visibleComment }}</span>
           </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getCurrentUser, login, register } from "../../lib/api/auth";
 import { clearAuthSession, publishAuthSession, readAuthSession } from "../../lib/auth/session";
 import { ui, type Locale } from "../../lib/i18n";
@@ -22,6 +23,11 @@ const loading = ref(false);
 const error = ref("");
 const notice = ref("");
 const isAlreadySignedIn = ref(false);
+const turnstileContainer = ref<HTMLElement | null>(null);
+const turnstileToken = ref("");
+const turnstileSiteKey = PUBLIC_TURNSTILE_SITE_KEY.trim();
+let turnstileWidgetID: string | undefined;
+let turnstileScriptPromise: Promise<void> | undefined;
 
 const copy = computed(() => {
   const auth = ui[props.locale].auth;
@@ -35,6 +41,9 @@ const submitLabel = computed(() => {
   if (loading.value) return copy.value.working;
   return mode.value === "login" ? copy.value.loginAction : copy.value.registerAction;
 });
+
+const turnstileEnabled = computed(() => mode.value === "register" && turnstileSiteKey !== "");
+const submitDisabled = computed(() => loading.value || (turnstileEnabled.value && !turnstileToken.value));
 
 onMounted(async () => {
   try {
@@ -50,28 +59,44 @@ onMounted(async () => {
   }
 });
 
+onBeforeUnmount(() => {
+  removeTurnstile();
+});
+
+watch(turnstileEnabled, async (enabled) => {
+  turnstileToken.value = "";
+  if (!enabled) {
+    removeTurnstile();
+    return;
+  }
+  await nextTick();
+  await renderTurnstile();
+});
+
 async function submitAuth() {
   error.value = "";
   notice.value = "";
   loading.value = true;
   try {
+    const didRegister = mode.value === "register";
     if (mode.value === "register") {
       await register({
         email: email.value.trim(),
         username: username.value.trim(),
         display_name: displayName.value.trim() || undefined,
         password: password.value,
+        turnstile_token: turnstileToken.value,
       });
-      notice.value = copy.value.created;
     }
     const session = await login({ email: email.value.trim(), password: password.value });
     publishAuthSession(session);
     await getCurrentUser();
     isAlreadySignedIn.value = true;
-    notice.value = copy.value.loginOk;
+    notice.value = didRegister ? copy.value.created : copy.value.loginOk;
     showToast(notice.value, { kind: "success" });
     navigateWithPageProgress(props.redirectHref);
   } catch (caught) {
+    resetTurnstile();
     error.value = caught instanceof Error ? caught.message : copy.value.failed;
     showToast(error.value, { kind: "error" });
   } finally {
@@ -83,6 +108,72 @@ function switchMode(nextMode: "login" | "register") {
   mode.value = nextMode;
   error.value = "";
   notice.value = "";
+}
+
+async function renderTurnstile() {
+  if (!turnstileEnabled.value || !turnstileContainer.value || typeof window === "undefined") return;
+  await loadTurnstileScript();
+  if (!window.turnstile || turnstileWidgetID) return;
+  turnstileWidgetID = window.turnstile.render(turnstileContainer.value, {
+    sitekey: turnstileSiteKey,
+    action: "register",
+    callback(token: string) {
+      turnstileToken.value = token;
+    },
+    "expired-callback"() {
+      turnstileToken.value = "";
+    },
+    "error-callback"() {
+      turnstileToken.value = "";
+    },
+  });
+}
+
+function resetTurnstile() {
+  turnstileToken.value = "";
+  if (typeof window === "undefined" || !window.turnstile || !turnstileWidgetID) return;
+  window.turnstile.reset(turnstileWidgetID);
+}
+
+function removeTurnstile() {
+  if (typeof window !== "undefined" && window.turnstile && turnstileWidgetID) {
+    window.turnstile.remove(turnstileWidgetID);
+  }
+  turnstileWidgetID = undefined;
+  turnstileToken.value = "";
+}
+
+function loadTurnstileScript() {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+  turnstileScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>("script[data-beeba-turnstile]");
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.dataset.beebaTurnstile = "true";
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
+    document.head.append(script);
+  });
+  return turnstileScriptPromise;
+}
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render(container: HTMLElement, options: Record<string, unknown>): string;
+      reset(widgetID?: string): void;
+      remove(widgetID: string): void;
+    };
+  }
 }
 </script>
 
@@ -116,7 +207,10 @@ function switchMode(nextMode: "login" | "register") {
           <span>{{ copy.password }}</span>
           <input v-model="password" type="password" :autocomplete="mode === 'register' ? 'new-password' : 'current-password'" minlength="12" :placeholder="copy.password" required />
         </label>
-        <button class="auth-submit" type="submit" :disabled="loading">{{ submitLabel }}</button>
+        <div v-if="turnstileSiteKey && mode === 'register'" class="auth-turnstile">
+          <div ref="turnstileContainer"></div>
+        </div>
+        <button class="auth-submit" type="submit" :disabled="submitDisabled">{{ submitLabel }}</button>
       </form>
 
       <div class="auth-social" aria-label="External sign-in providers">

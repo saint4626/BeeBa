@@ -15,6 +15,7 @@ import (
 
 	"beeba.org/internal/config"
 	"beeba.org/internal/domain/jobs"
+	emailclient "beeba.org/internal/email"
 	"beeba.org/internal/repository/postgres"
 	searchclient "beeba.org/internal/search/meilisearch"
 	"beeba.org/internal/security/antivirus"
@@ -36,6 +37,7 @@ type Worker struct {
 	objects objectReader
 	secrets secretbox.Box
 	search  *searchclient.Client
+	email   emailclient.Sender
 	av      antivirusScanner
 	id      string
 }
@@ -85,6 +87,14 @@ func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worke
 			return nil, err
 		}
 	}
+	var emailSender emailclient.Sender
+	if cfg.EmailDeliveryEnabled {
+		emailSender, err = emailclient.NewResendSender(cfg)
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 
 	hostname, _ := os.Hostname()
 	if hostname == "" {
@@ -100,6 +110,7 @@ func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worke
 		objects: objects,
 		secrets: secrets,
 		search:  search,
+		email:   emailSender,
 		av:      av,
 		id:      fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()),
 	}, nil
@@ -198,8 +209,7 @@ func (w *Worker) processImageQueue(ctx context.Context) error {
 func (w *Worker) processSearchQueue(ctx context.Context) error {
 	job, err := w.jobs.Claim(ctx, "search_index_queue", w.id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		w.log.Debug("worker_idle", slog.String("queue", "file_scan_queue,image_processing_queue,search_index_queue"))
-		return err
+		return w.processEmailQueue(ctx)
 	}
 	if err != nil {
 		return fmt.Errorf("claim search index job: %w", err)
@@ -216,6 +226,37 @@ func (w *Worker) processSearchQueue(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (w *Worker) processEmailQueue(ctx context.Context) error {
+	job, err := w.jobs.Claim(ctx, "email_queue", w.id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.log.Debug("worker_idle", slog.String("queue", "file_scan_queue,image_processing_queue,search_index_queue,email_queue"))
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("claim email job: %w", err)
+	}
+
+	w.log.Info("worker_job_claimed", slog.String("job_id", job.ID), slog.String("job_type", job.JobType))
+	var processErr error
+	switch job.JobType {
+	case "send_email_verification":
+		processErr = w.processEmailVerification(ctx, job)
+	case "send_password_change_confirmation":
+		processErr = w.processPasswordChangeConfirmation(ctx, job)
+	case "send_email_change_confirmation":
+		processErr = w.processEmailChangeConfirmation(ctx, job)
+	default:
+		return w.jobs.MarkFailed(ctx, job, "unsupported job type")
+	}
+	if processErr == nil {
+		return nil
+	}
+	if markErr := w.jobs.MarkFailed(ctx, job, processErr.Error()); markErr != nil {
+		return fmt.Errorf("process email job: %w; mark failed: %w", processErr, markErr)
+	}
+	return processErr
 }
 
 func (w *Worker) processFileScan(ctx context.Context, job jobs.Job) error {
@@ -559,6 +600,230 @@ func (w *Worker) processSearchIndex(ctx context.Context, job jobs.Job) error {
 		slog.String("action", payload.Action),
 	)
 	return nil
+}
+
+func (w *Worker) processEmailVerification(ctx context.Context, job jobs.Job) error {
+	var payload jobs.EmailVerificationPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode email verification payload: %w", err)
+	}
+	if payload.UserID == "" || payload.Email == "" || payload.TokenID == "" || payload.Token == "" {
+		return fmt.Errorf("email verification payload is incomplete")
+	}
+
+	token, err := w.jobs.GetEmailVerificationTokenForSend(ctx, payload.TokenID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark missing email token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_email_verification_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("reason", "token_missing"),
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load email verification token: %w", err)
+	}
+	if token.UserID != payload.UserID || token.Email != payload.Email {
+		return fmt.Errorf("email verification token metadata mismatch")
+	}
+	if token.UsedAt != nil || !token.ExpiresAt.After(time.Now().UTC()) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark stale email token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_email_verification_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("token_id", payload.TokenID),
+			slog.String("reason", "token_stale"),
+		)
+		return nil
+	}
+	if w.email == nil {
+		if !w.cfg.EmailDeliveryEnabled {
+			if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+				return fmt.Errorf("mark disabled email job succeeded: %w", markErr)
+			}
+			w.log.Info("worker_email_verification_skipped",
+				slog.String("job_id", job.ID),
+				slog.String("token_id", payload.TokenID),
+				slog.String("reason", "email_delivery_disabled"),
+			)
+			return nil
+		}
+		return fmt.Errorf("email sender is not configured")
+	}
+
+	messageID, err := w.email.SendEmailVerification(ctx, emailclient.VerificationEmail{
+		To:            payload.Email,
+		Username:      payload.Username,
+		TokenID:       payload.TokenID,
+		Token:         payload.Token,
+		PublicBaseURL: w.cfg.PublicBaseURL,
+		ExpiresAt:     token.ExpiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark email job succeeded: %w", err)
+	}
+	w.log.Info("worker_email_verification_sent",
+		slog.String("job_id", job.ID),
+		slog.String("token_id", payload.TokenID),
+		slog.String("resend_message_id", messageID),
+	)
+	return nil
+}
+
+func (w *Worker) processPasswordChangeConfirmation(ctx context.Context, job jobs.Job) error {
+	var payload jobs.PasswordChangeConfirmationPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode password change payload: %w", err)
+	}
+	if payload.UserID == "" || payload.Email == "" || payload.TokenID == "" || payload.Token == "" {
+		return fmt.Errorf("password change payload is incomplete")
+	}
+
+	token, err := w.jobs.GetPasswordChangeTokenForSend(ctx, payload.TokenID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark missing password token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_password_change_email_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("reason", "token_missing"),
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load password change token: %w", err)
+	}
+	if token.UserID != payload.UserID || token.Email != payload.Email {
+		return fmt.Errorf("password change token metadata mismatch")
+	}
+	if token.UsedAt != nil || !token.ExpiresAt.After(time.Now().UTC()) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark stale password token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_password_change_email_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("token_id", payload.TokenID),
+			slog.String("reason", "token_stale"),
+		)
+		return nil
+	}
+	if err := w.ensureEmailSender(ctx, job.ID, payload.TokenID, "worker_password_change_email_skipped"); err != nil {
+		return err
+	}
+	if w.email == nil {
+		return nil
+	}
+
+	messageID, err := w.email.SendPasswordChangeConfirmation(ctx, emailclient.PasswordChangeEmail{
+		To:            payload.Email,
+		Username:      payload.Username,
+		TokenID:       payload.TokenID,
+		Token:         payload.Token,
+		PublicBaseURL: w.cfg.PublicBaseURL,
+		ExpiresAt:     token.ExpiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark password change email job succeeded: %w", err)
+	}
+	w.log.Info("worker_password_change_email_sent",
+		slog.String("job_id", job.ID),
+		slog.String("token_id", payload.TokenID),
+		slog.String("resend_message_id", messageID),
+	)
+	return nil
+}
+
+func (w *Worker) processEmailChangeConfirmation(ctx context.Context, job jobs.Job) error {
+	var payload jobs.EmailChangeConfirmationPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode email change payload: %w", err)
+	}
+	if payload.UserID == "" || payload.Email == "" || payload.TokenID == "" || payload.Token == "" {
+		return fmt.Errorf("email change payload is incomplete")
+	}
+
+	token, err := w.jobs.GetEmailChangeTokenForSend(ctx, payload.TokenID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark missing email change token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_email_change_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("reason", "token_missing"),
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load email change token: %w", err)
+	}
+	if token.UserID != payload.UserID || token.NewEmail != payload.Email {
+		return fmt.Errorf("email change token metadata mismatch")
+	}
+	if token.UsedAt != nil || !token.ExpiresAt.After(time.Now().UTC()) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark stale email change token job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_email_change_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("token_id", payload.TokenID),
+			slog.String("reason", "token_stale"),
+		)
+		return nil
+	}
+	if err := w.ensureEmailSender(ctx, job.ID, payload.TokenID, "worker_email_change_skipped"); err != nil {
+		return err
+	}
+	if w.email == nil {
+		return nil
+	}
+
+	messageID, err := w.email.SendEmailChangeConfirmation(ctx, emailclient.EmailChangeEmail{
+		To:            payload.Email,
+		Username:      payload.Username,
+		TokenID:       payload.TokenID,
+		Token:         payload.Token,
+		PublicBaseURL: w.cfg.PublicBaseURL,
+		ExpiresAt:     token.ExpiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark email change job succeeded: %w", err)
+	}
+	w.log.Info("worker_email_change_sent",
+		slog.String("job_id", job.ID),
+		slog.String("token_id", payload.TokenID),
+		slog.String("resend_message_id", messageID),
+	)
+	return nil
+}
+
+func (w *Worker) ensureEmailSender(ctx context.Context, jobID string, tokenID string, logEvent string) error {
+	if w.email != nil {
+		return nil
+	}
+	if !w.cfg.EmailDeliveryEnabled {
+		if markErr := w.jobs.MarkSucceeded(ctx, jobID); markErr != nil {
+			return fmt.Errorf("mark disabled email job succeeded: %w", markErr)
+		}
+		w.log.Info(logEvent,
+			slog.String("job_id", jobID),
+			slog.String("token_id", tokenID),
+			slog.String("reason", "email_delivery_disabled"),
+		)
+		return nil
+	}
+	return fmt.Errorf("email sender is not configured")
 }
 
 func processedImageKey(kind string, userID string, contentID string, imageID string, extension string) string {

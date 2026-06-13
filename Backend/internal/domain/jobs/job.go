@@ -74,6 +74,57 @@ type SearchIndexPayload struct {
 	Action    string `json:"action"`
 }
 
+type EmailVerificationPayload struct {
+	UserID   string `json:"user_id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	TokenID  string `json:"token_id"`
+	Token    string `json:"token"`
+	Template string `json:"template"`
+}
+
+type PasswordChangeConfirmationPayload struct {
+	UserID   string `json:"user_id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	TokenID  string `json:"token_id"`
+	Token    string `json:"token"`
+	Template string `json:"template"`
+}
+
+type EmailChangeConfirmationPayload struct {
+	UserID   string `json:"user_id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	TokenID  string `json:"token_id"`
+	Token    string `json:"token"`
+	Template string `json:"template"`
+}
+
+type EmailVerificationTokenForSend struct {
+	ID        string
+	UserID    string
+	Email     string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+type PasswordChangeTokenForSend struct {
+	ID        string
+	UserID    string
+	Email     string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+type EmailChangeTokenForSend struct {
+	ID        string
+	UserID    string
+	NewEmail  string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
 type ContentFileForScan struct {
 	FileID                   string
 	ContentID                string

@@ -32,16 +32,6 @@ try {
   popularLoadFailed = true;
 }
 
-const placeholderAssets = [
-  { title: t.firstWorld, category: ui[locale].categories.worlds, author: "BeeBa", tone: "world" as const },
-  { title: t.basisAvatar, category: ui[locale].categories.avatars, author: "BeeBa", tone: "avatar" as const },
-  { title: t.interactiveProp, category: ui[locale].categories.props, author: "BeeBa", tone: "prop" as const },
-  { title: t.creatorPrefab, category: ui[locale].categories.prefabs, author: "BeeBa", tone: "prefab" as const },
-  { title: t.publicBeeAsset, category: ui[locale].categories.worlds, author: "BeeBa", tone: "world" as const },
-  { title: t.publicationSlot, category: ui[locale].categories.avatars, author: "BeeBa", tone: "avatar" as const },
-];
-
-const featured = featuredAssets.length ? featuredAssets : placeholderAssets;
 const latest = latestAssets.length ? latestAssets : [];
 const categories = [
   { label: ui[locale].categories.worlds, href: localizedPath(locale, "/catalog/worlds") },
@@ -65,19 +55,23 @@ const categories = [
         <p class="feed-notice">{t.unavailable}</p>
       )
     }
-    <div class="asset-masonry asset-masonry--featured">
-      {
-        featured.map((asset, index) => (
-          <AssetCard
-            item={"id" in asset ? asset : undefined}
-            placeholder={"id" in asset ? undefined : asset}
-            publicAPIBaseURL={publicAPIBaseURL}
-            locale={locale}
-            priority={index < 6}
-          />
-        ))
-      }
-    </div>
+    {
+      featuredAssets.length ? (
+        <div class="asset-masonry asset-masonry--featured">
+          {featuredAssets.map((asset, index) => (
+            <AssetCard item={asset} publicAPIBaseURL={publicAPIBaseURL} locale={locale} priority={index < 6} />
+          ))}
+        </div>
+      ) : (
+        <div class="empty-state">
+          <span class="empty-state__badge">.bee</span>
+          <div>
+            <h2>{t.emptyTitle}</h2>
+            <p>{t.emptyCopy}</p>
+          </div>
+        </div>
+      )
+    }
   </section>
 
   <section class="feed-section" aria-labelledby="categories-title">

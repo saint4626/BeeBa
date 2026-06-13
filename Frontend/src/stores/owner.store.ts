@@ -1,11 +1,11 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { changePassword, getCurrentUser, resendEmailVerification, updateProfile } from "../lib/api/auth";
+import { changeEmail, changePassword, getCurrentUser, resendEmailVerification, updateProfile } from "../lib/api/auth";
 import { clearAuthSession, publishSessionUser, readAuthSession } from "../lib/auth/session";
 import { listContentImages, updateContentImage, deleteContentImage, uploadAvatar, uploadContentImage } from "../lib/api/media";
 import { deleteOwnedContent, listOwnedContent, updateOwnedContent } from "../lib/api/uploads";
 import { OWNER_TIMING } from "../lib/config/runtime";
-import type { OwnerContentItem, OwnerContentUpdateInput, PublicUser, UploadedImage } from "../lib/api/types";
+import type { OwnerContentItem, OwnerContentUpdateInput, OwnerStorageUsage, PublicUser, UploadedImage } from "../lib/api/types";
 
 interface RefreshOptions {
   silent?: boolean;
@@ -19,6 +19,7 @@ export const useOwnerStore = defineStore("owner", () => {
   const accessToken = ref("");
   const user = ref<PublicUser | null>(null);
   const items = ref<OwnerContentItem[]>([]);
+  const storageUsage = ref<OwnerStorageUsage | null>(null);
   const imagesByContent = ref<Record<string, UploadedImage[]>>({});
   const selectedContentID = ref("");
   const loading = ref(false);
@@ -52,7 +53,9 @@ export const useOwnerStore = defineStore("owner", () => {
     }
     syncing.value = true;
     try {
-      items.value = await listOwnedContent(accessToken.value);
+      const response = await listOwnedContent(accessToken.value);
+      items.value = response.data;
+      storageUsage.value = response.storage;
       if (selectedContentID.value && !items.value.some((item) => item.id === selectedContentID.value)) {
         selectedContentID.value = "";
       }
@@ -156,13 +159,35 @@ export const useOwnerStore = defineStore("owner", () => {
     loading.value = true;
     error.value = "";
     try {
-      await changePassword(accessToken.value, {
+      const accepted = await changePassword(accessToken.value, {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      notice.value = "Password changed. Other sessions were revoked.";
+      user.value = accepted.user;
+      publishSessionUser(user.value);
+      return accepted;
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : "Failed to change password.";
+      throw caught;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function requestEmailChange(currentPassword: string, newEmail: string) {
+    if (!user.value) return;
+    loading.value = true;
+    error.value = "";
+    try {
+      const accepted = await changeEmail(accessToken.value, {
+        current_password: currentPassword,
+        new_email: newEmail,
+      });
+      user.value = accepted.user;
+      publishSessionUser(user.value);
+      return accepted;
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : "Failed to request email change.";
       throw caught;
     } finally {
       loading.value = false;
@@ -251,6 +276,7 @@ export const useOwnerStore = defineStore("owner", () => {
     accessToken.value = "";
     user.value = null;
     items.value = [];
+    storageUsage.value = null;
     imagesByContent.value = {};
     selectedContentID.value = "";
     clearAuthSession();
@@ -328,6 +354,7 @@ export const useOwnerStore = defineStore("owner", () => {
     accessToken,
     user,
     items,
+    storageUsage,
     imagesByContent,
     selectedContentID,
     loading,
@@ -347,6 +374,7 @@ export const useOwnerStore = defineStore("owner", () => {
     setAvatar,
     updateAccountProfile,
     updatePassword,
+    requestEmailChange,
     requestEmailVerification,
     refreshCurrentUser,
     addContentImage,

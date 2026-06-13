@@ -133,6 +133,20 @@ export interface APIListResponse<T> {
   pagination?: CursorPagination;
 }
 
+export interface OwnerStorageUsage {
+  used_bytes: number;
+  limit_bytes: number;
+}
+
+export interface OwnerContentListResponse extends APIListResponse<OwnerContentItem> {
+  storage?: OwnerStorageUsage;
+}
+
+export interface OwnerContentList {
+  data: OwnerContentItem[];
+  storage: OwnerStorageUsage | null;
+}
+
 export interface APIErrorResponse {
   error: {
     code: string;

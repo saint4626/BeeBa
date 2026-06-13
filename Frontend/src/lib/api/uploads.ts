@@ -2,7 +2,14 @@ import { authHeaders, browserJSON } from "./browser";
 import { getPublicAPIBaseURL } from "./client";
 import { createContentUploadFormData } from "./upload-form-data";
 import { PAGE_LIMITS } from "../config/runtime";
-import type { APIListResponse, ContentUploadCreated, OwnerContentItem, OwnerContentUpdateInput } from "./types";
+import type {
+  ContentUploadCreated,
+  OwnerContentItem,
+  OwnerContentList,
+  OwnerContentListResponse,
+  OwnerContentUpdateInput,
+  OwnerStorageUsage,
+} from "./types";
 
 export async function uploadContentPackage(input: {
   accessToken: string;
@@ -25,11 +32,33 @@ export async function uploadContentPackage(input: {
   return response.data;
 }
 
-export async function listOwnedContent(accessToken: string): Promise<OwnerContentItem[]> {
-  const response = await browserJSON<APIListResponse<OwnerContentItem>>(`/me/content?limit=${PAGE_LIMITS.ownerContent}`, {
-    headers: authHeaders(accessToken),
-  });
-  return response.data;
+export async function listOwnedContent(accessToken: string): Promise<OwnerContentList> {
+  const items: OwnerContentItem[] = [];
+  const seenCursors = new Set<string>();
+  let cursor = "";
+  let storage: OwnerStorageUsage | null = null;
+
+  do {
+    const params = new URLSearchParams({ limit: String(PAGE_LIMITS.ownerContent) });
+    if (cursor) {
+      params.set("cursor", cursor);
+      seenCursors.add(cursor);
+    }
+
+    const response = await browserJSON<OwnerContentListResponse>(`/me/content?${params.toString()}`, {
+      headers: authHeaders(accessToken),
+    });
+    items.push(...response.data);
+    storage = response.storage ?? storage;
+
+    const nextCursor = response.pagination?.next_cursor ?? "";
+    if (nextCursor && seenCursors.has(nextCursor)) {
+      throw new Error("Owner content pagination loop detected.");
+    }
+    cursor = nextCursor;
+  } while (cursor);
+
+  return { data: items, storage };
 }
 
 function uploadMultipart<T>(

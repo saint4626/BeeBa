@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"beeba.org/internal/config"
+	contentdomain "beeba.org/internal/domain/content"
 	uploaddomain "beeba.org/internal/domain/upload"
 	"beeba.org/internal/http/middleware/authz"
 	"beeba.org/internal/security/secretbox"
@@ -27,6 +28,7 @@ import (
 
 type Store interface {
 	Create(ctx context.Context, input uploaddomain.CreateInput) (uploaddomain.Created, error)
+	OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (contentdomain.OwnerStorageUsage, error)
 }
 
 type ObjectStore interface {
@@ -103,6 +105,9 @@ func (h Handler) Create(c fiber.Ctx) error {
 
 	ctx, cancel := context.WithTimeout(c.Context(), h.cfg.UploadStorageTimeout)
 	defer cancel()
+	if err := h.ensureStorageQuota(ctx, session.User.ID, fileHeader.Size); err != nil {
+		return err
+	}
 
 	if err := h.objects.EnsureBucket(ctx, h.cfg.QuarantineBucket); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to prepare quarantine storage")
@@ -137,7 +142,12 @@ func (h Handler) Create(c fiber.Ctx) error {
 		FileHashSHA256:           hash,
 		MimeTypeDetected:         detectedMIME,
 		UnlockPasswordCiphertext: encryptedPassword,
+		StorageQuotaBytes:        h.cfg.UserStorageQuotaBytes,
 	})
+	if errors.Is(err, contentdomain.ErrStorageQuotaExceeded) {
+		_ = h.objects.RemoveObject(ctx, h.cfg.QuarantineBucket, storageKey)
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "account storage limit exceeded")
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = h.objects.RemoveObject(ctx, h.cfg.QuarantineBucket, storageKey)
 		return fiber.NewError(fiber.StatusBadRequest, "category is invalid")
@@ -154,6 +164,17 @@ func (h Handler) Create(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"data": created,
 	})
+}
+
+func (h Handler) ensureStorageQuota(ctx context.Context, ownerID string, incomingBytes int64) error {
+	usage, err := h.store.OwnerStorageUsage(ctx, ownerID, h.cfg.UserStorageQuotaBytes)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to check storage quota")
+	}
+	if usage.LimitBytes > 0 && incomingBytes > usage.LimitBytes-usage.UsedBytes {
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "account storage limit exceeded")
+	}
+	return nil
 }
 
 func validateBeeFile(fileHeader *multipart.FileHeader, maxSize int64) error {

@@ -507,6 +507,7 @@ function renderAuthNavDocument(doc: Document) {
   const manage = doc.querySelector<HTMLAnchorElement>("[data-auth-manage]");
   const upload = doc.querySelector<HTMLAnchorElement>("[data-auth-upload]");
   const uploadHref = upload?.dataset.uploadHref ?? "";
+  const uploadLoginHref = upload?.dataset.loginHref ?? "";
   const menu = doc.querySelector<HTMLDetailsElement>("[data-auth-menu]");
   const summary = doc.querySelector<HTMLElement>("[data-auth-summary]");
   const avatar = doc.querySelector<HTMLImageElement>("[data-auth-avatar]");
@@ -525,13 +526,9 @@ function renderAuthNavDocument(doc: Document) {
   }
   menu.hidden = !isAuthenticated;
   if (upload) {
-    upload.classList.toggle("button--disabled", !isAuthenticated);
-    upload.setAttribute("aria-disabled", isAuthenticated ? "false" : "true");
-    if (isAuthenticated) {
-      upload.setAttribute("href", uploadHref);
-    } else {
-      upload.removeAttribute("href");
-    }
+    upload.classList.remove("button--disabled");
+    upload.removeAttribute("aria-disabled");
+    upload.setAttribute("href", isAuthenticated ? uploadHref : uploadLoginHref);
   }
   doc.querySelectorAll<HTMLAnchorElement>("[data-auth-cta-upload]").forEach((cta) => {
     const target = isAuthenticated ? cta.dataset.uploadHref : cta.dataset.loginHref;

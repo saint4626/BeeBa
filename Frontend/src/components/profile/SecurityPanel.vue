@@ -10,6 +10,8 @@ const t = ui[props.locale].profile;
 const currentPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
+const newEmail = ref("");
+const emailChangePassword = ref("");
 
 const emailStatus = computed(() => owner.user?.email_verified_at ? t.verified : t.pending);
 
@@ -23,8 +25,20 @@ async function submitPassword() {
     currentPassword.value = "";
     newPassword.value = "";
     confirmPassword.value = "";
+    showToast(t.passwordConfirmationQueued, "success");
   } catch (caught) {
     showToast(caught instanceof Error ? caught.message : t.passwordFailed, "error");
+  }
+}
+
+async function submitEmailChange() {
+  try {
+    const accepted = await owner.requestEmailChange(emailChangePassword.value, newEmail.value.trim());
+    showToast(`${t.emailChangeConfirmationQueuedPrefix} ${accepted?.pending_email ?? newEmail.value.trim()}.`, "success");
+    newEmail.value = "";
+    emailChangePassword.value = "";
+  } catch (caught) {
+    showToast(caught instanceof Error ? caught.message : t.emailChangeFailed, "error");
   }
 }
 
@@ -64,6 +78,22 @@ async function resendVerification() {
     >
       {{ t.resendVerification }}
     </button>
+
+    <form class="form-grid" @submit.prevent="submitEmailChange">
+      <div class="form-row">
+        <label class="field">
+          {{ t.newEmail }}
+          <input v-model="newEmail" type="email" autocomplete="email" :disabled="!owner.isAuthenticated" required />
+        </label>
+        <label class="field">
+          {{ t.emailChangePassword }}
+          <input v-model="emailChangePassword" type="password" autocomplete="current-password" minlength="1" :disabled="!owner.isAuthenticated" required />
+        </label>
+      </div>
+      <button class="button button--secondary" type="submit" :disabled="owner.loading || !owner.isAuthenticated">
+        {{ t.requestEmailChange }}
+      </button>
+    </form>
 
     <form class="form-grid" @submit.prevent="submitPassword">
       <div class="form-row">

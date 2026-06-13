@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/media"
 
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,10 @@ func NewMediaRepository(db *pgxpool.Pool) MediaRepository {
 	return MediaRepository{db: db}
 }
 
+func (r MediaRepository) OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (content.OwnerStorageUsage, error) {
+	return ownerStorageUsage(ctx, r.db, ownerID, limitBytes)
+}
+
 func (r MediaRepository) CreateUserAvatar(ctx context.Context, input media.ImageUploadInput) (media.UploadedImage, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -30,6 +35,13 @@ func (r MediaRepository) CreateUserAvatar(ctx context.Context, input media.Image
 
 	replacedObjects, err := userAvatarObjectsForReplacement(ctx, tx, input.OwnerUserID)
 	if err != nil {
+		return media.UploadedImage{}, err
+	}
+	replacedBytes := int64(0)
+	for _, object := range replacedObjects {
+		replacedBytes += object.FileSize
+	}
+	if err := ensureOwnerStorageQuota(ctx, tx, input.OwnerUserID, input.FileSize-replacedBytes, input.StorageQuotaBytes); err != nil {
 		return media.UploadedImage{}, err
 	}
 
@@ -106,6 +118,9 @@ WHERE id = $1::uuid
   AND status <> 'deleted'`, input.ContentID, input.OwnerUserID).Scan(&contentTitle)
 	if err != nil {
 		return media.UploadedImage{}, fmt.Errorf("check content ownership: %w", err)
+	}
+	if err := ensureOwnerStorageQuota(ctx, tx, input.OwnerUserID, input.FileSize, input.StorageQuotaBytes); err != nil {
+		return media.UploadedImage{}, err
 	}
 	input.AltText = contentImageAltText(input.AltText, contentTitle)
 

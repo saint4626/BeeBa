@@ -12,6 +12,6 @@ const t = ui[locale];
   description={t.verifyEmail.description}
 >
   <section class="page-shell page-shell--narrow">
-    <EmailVerificationApp client:load locale={locale} />
+    <EmailVerificationApp client:load locale={locale} profileHref="/profile" />
   </section>
 </BaseLayout>

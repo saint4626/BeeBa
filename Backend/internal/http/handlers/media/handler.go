@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"beeba.org/internal/config"
+	contentdomain "beeba.org/internal/domain/content"
 	mediadomain "beeba.org/internal/domain/media"
 	"beeba.org/internal/http/middleware/authz"
 	"beeba.org/internal/security/images"
@@ -27,6 +28,7 @@ import (
 type Store interface {
 	CreateUserAvatar(ctx context.Context, input mediadomain.ImageUploadInput) (mediadomain.UploadedImage, error)
 	CreateContentImage(ctx context.Context, input mediadomain.ImageUploadInput) (mediadomain.UploadedImage, error)
+	OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (contentdomain.OwnerStorageUsage, error)
 	ListOwnedContentImages(ctx context.Context, ownerUserID string, contentID string) ([]mediadomain.UploadedImage, error)
 	UpdateOwnedContentImage(ctx context.Context, input mediadomain.ContentImageUpdate) (mediadomain.UploadedImage, error)
 	DeleteOwnedContentImage(ctx context.Context, ownerUserID string, contentID string, imageID string) error
@@ -92,17 +94,22 @@ func (h Handler) UploadAvatar(c fiber.Ctx) error {
 	}
 
 	uploaded, err := h.store.CreateUserAvatar(ctx, mediadomain.ImageUploadInput{
-		OwnerUserID:      session.User.ID,
-		Bucket:           h.cfg.PreviewBucket,
-		StorageKey:       storageKey,
-		OriginalFilename: fileHeader.Filename,
-		AltText:          altText,
-		Width:            metadata.Width,
-		Height:           metadata.Height,
-		FileSize:         metadata.DecodedSize,
-		FileHashSHA256:   metadata.SHA256,
-		MimeTypeDetected: metadata.MIMEType,
+		OwnerUserID:       session.User.ID,
+		Bucket:            h.cfg.PreviewBucket,
+		StorageKey:        storageKey,
+		OriginalFilename:  fileHeader.Filename,
+		AltText:           altText,
+		Width:             metadata.Width,
+		Height:            metadata.Height,
+		FileSize:          metadata.DecodedSize,
+		FileHashSHA256:    metadata.SHA256,
+		MimeTypeDetected:  metadata.MIMEType,
+		StorageQuotaBytes: h.cfg.UserStorageQuotaBytes,
 	})
+	if errors.Is(err, contentdomain.ErrStorageQuotaExceeded) {
+		_ = h.objects.RemoveObject(ctx, h.cfg.PreviewBucket, storageKey)
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "account storage limit exceeded")
+	}
 	if err != nil {
 		_ = h.objects.RemoveObject(ctx, h.cfg.PreviewBucket, storageKey)
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to persist avatar metadata")
@@ -153,6 +160,9 @@ func (h Handler) UploadContentImage(c fiber.Ctx) error {
 
 	ctx, cancel := context.WithTimeout(c.Context(), 20*time.Second)
 	defer cancel()
+	if err := h.ensureStorageQuota(ctx, session.User.ID, metadata.DecodedSize); err != nil {
+		return err
+	}
 	if err := h.objects.EnsureBucket(ctx, h.cfg.PreviewBucket); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to prepare media storage")
 	}
@@ -164,23 +174,28 @@ func (h Handler) UploadContentImage(c fiber.Ctx) error {
 	}
 
 	uploaded, err := h.store.CreateContentImage(ctx, mediadomain.ImageUploadInput{
-		OwnerUserID:      session.User.ID,
-		ContentID:        contentID,
-		Bucket:           h.cfg.PreviewBucket,
-		StorageKey:       storageKey,
-		OriginalFilename: fileHeader.Filename,
-		AltText:          altText,
-		Width:            metadata.Width,
-		Height:           metadata.Height,
-		FileSize:         metadata.DecodedSize,
-		FileHashSHA256:   metadata.SHA256,
-		MimeTypeDetected: metadata.MIMEType,
-		IsPrimary:        isPrimary,
-		SortOrder:        sortOrder,
+		OwnerUserID:       session.User.ID,
+		ContentID:         contentID,
+		Bucket:            h.cfg.PreviewBucket,
+		StorageKey:        storageKey,
+		OriginalFilename:  fileHeader.Filename,
+		AltText:           altText,
+		Width:             metadata.Width,
+		Height:            metadata.Height,
+		FileSize:          metadata.DecodedSize,
+		FileHashSHA256:    metadata.SHA256,
+		MimeTypeDetected:  metadata.MIMEType,
+		IsPrimary:         isPrimary,
+		SortOrder:         sortOrder,
+		StorageQuotaBytes: h.cfg.UserStorageQuotaBytes,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = h.objects.RemoveObject(ctx, h.cfg.PreviewBucket, storageKey)
 		return fiber.NewError(fiber.StatusNotFound, "content not found")
+	}
+	if errors.Is(err, contentdomain.ErrStorageQuotaExceeded) {
+		_ = h.objects.RemoveObject(ctx, h.cfg.PreviewBucket, storageKey)
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "account storage limit exceeded")
 	}
 	if err != nil {
 		_ = h.objects.RemoveObject(ctx, h.cfg.PreviewBucket, storageKey)
@@ -213,6 +228,17 @@ func (h Handler) ListContentImages(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to load content images")
 	}
 	return c.JSON(fiber.Map{"data": images})
+}
+
+func (h Handler) ensureStorageQuota(ctx context.Context, ownerID string, incomingBytes int64) error {
+	usage, err := h.store.OwnerStorageUsage(ctx, ownerID, h.cfg.UserStorageQuotaBytes)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to check storage quota")
+	}
+	if usage.LimitBytes > 0 && incomingBytes > usage.LimitBytes-usage.UsedBytes {
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "account storage limit exceeded")
+	}
+	return nil
 }
 
 func (h Handler) UpdateContentImage(c fiber.Ctx) error {

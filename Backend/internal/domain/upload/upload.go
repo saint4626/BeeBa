@@ -23,6 +23,7 @@ type CreateInput struct {
 	FileHashSHA256           string
 	MimeTypeDetected         string
 	UnlockPasswordCiphertext string
+	StorageQuotaBytes        int64
 }
 
 type Created struct {

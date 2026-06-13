@@ -24,6 +24,10 @@ func NewContentRepository(db *pgxpool.Pool, secrets secretbox.Box) ContentReposi
 	return ContentRepository{db: db, secrets: &secrets}
 }
 
+func (r ContentRepository) OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (content.OwnerStorageUsage, error) {
+	return ownerStorageUsage(ctx, r.db, ownerID, limitBytes)
+}
+
 func (r ContentRepository) ListPublished(ctx context.Context, filter content.ListFilter) (content.Page, error) {
 	sortExpr, cursorCondition, err := contentSort(filter.Sort)
 	if err != nil {

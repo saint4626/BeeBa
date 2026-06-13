@@ -34,11 +34,18 @@ function statusLabel(value: string) {
 }
 
 function formatBytes(value?: number) {
-  if (!value) return t.noFileSize;
+  if (value === undefined || value === null) return t.noFileSize;
+  if (value <= 0) return "0 B";
   if (value < BYTE_UNITS.kib) return `${value} B`;
   if (value < BYTE_UNITS.mib) return `${(value / BYTE_UNITS.kib).toFixed(1)} KB`;
   if (value < BYTE_UNITS.gib) return `${(value / BYTE_UNITS.mib).toFixed(1)} MB`;
   return `${(value / BYTE_UNITS.gib).toFixed(2)} GB`;
+}
+
+function storagePercent() {
+  const usage = owner.storageUsage;
+  if (!usage || usage.limit_bytes <= 0) return 0;
+  return Math.min(100, Math.round((usage.used_bytes / usage.limit_bytes) * 100));
 }
 
 function categoryClass(item: OwnerContentItem) {
@@ -61,9 +68,24 @@ function initials(value: string) {
         <p class="eyebrow">{{ t.ownerLibrary }}</p>
         <h2 id="profile-content-title">{{ t.packages }}</h2>
       </div>
-      <button class="button button--secondary" type="button" :disabled="owner.loading || !owner.isAuthenticated" @click="owner.refreshLibrary">
-        {{ t.refresh }}
-      </button>
+      <div class="profile-content-panel__tools">
+        <div v-if="owner.storageUsage" class="storage-meter">
+          <span class="storage-meter__head">
+            <span>{{ t.storageUsage }}</span>
+            <strong>{{ formatBytes(owner.storageUsage.used_bytes) }} / {{ formatBytes(owner.storageUsage.limit_bytes) }}</strong>
+          </span>
+          <progress
+            class="storage-meter__bar"
+            :value="owner.storageUsage.used_bytes"
+            :max="owner.storageUsage.limit_bytes || 1"
+            :aria-label="t.storageUsageLabel"
+            :aria-valuetext="`${storagePercent()}%`"
+          ></progress>
+        </div>
+        <button class="button button--secondary" type="button" :disabled="owner.loading || !owner.isAuthenticated" @click="owner.refreshLibrary">
+          {{ t.refresh }}
+        </button>
+      </div>
     </div>
 
     <div v-if="!owner.isAuthenticated" class="message message--warning">

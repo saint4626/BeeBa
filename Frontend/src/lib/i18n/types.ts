@@ -61,12 +61,6 @@ export interface UIStrings {
     ctaCopy: string;
     ctaButton: string;
     unavailable: string;
-    firstWorld: string;
-    basisAvatar: string;
-    interactiveProp: string;
-    creatorPrefab: string;
-    publicBeeAsset: string;
-    publicationSlot: string;
   };
   catalog: {
     title: string;
@@ -206,6 +200,8 @@ export interface UIStrings {
     avatarFailed: string;
     ownerLibrary: string;
     packages: string;
+    storageUsage: string;
+    storageUsageLabel: string;
     refresh: string;
     authWarning: string;
     noOwnerItems: string;
@@ -291,6 +287,13 @@ export interface UIStrings {
     newPassword: string;
     confirmPassword: string;
     changePassword: string;
+    passwordConfirmationQueued: string;
+    emailChange: string;
+    newEmail: string;
+    emailChangePassword: string;
+    requestEmailChange: string;
+    emailChangeConfirmationQueuedPrefix: string;
+    emailChangeFailed: string;
     passwordMismatch: string;
     passwordFailed: string;
     verificationFailed: string;
@@ -386,6 +389,27 @@ export interface UIStrings {
     action: string;
     successPrefix: string;
     failed: string;
+  };
+  accountConfirm: {
+    passwordTitle: string;
+    passwordDescription: string;
+    passwordEyebrow: string;
+    passwordHeading: string;
+    passwordToken: string;
+    passwordChecking: string;
+    passwordAction: string;
+    passwordSuccess: string;
+    passwordFailed: string;
+    passwordSessionsRevoked: string;
+    emailTitle: string;
+    emailDescription: string;
+    emailEyebrow: string;
+    emailHeading: string;
+    emailToken: string;
+    emailChecking: string;
+    emailAction: string;
+    emailSuccessPrefix: string;
+    emailFailed: string;
   };
   apiReference: {
     title: string;

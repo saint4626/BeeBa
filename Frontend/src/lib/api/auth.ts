@@ -6,6 +6,7 @@ export interface RegisterInput {
   username: string;
   password: string;
   display_name?: string;
+  turnstile_token?: string;
 }
 
 export interface LoginInput {
@@ -20,6 +21,17 @@ export interface ProfileUpdateInput {
 export interface PasswordChangeInput {
   current_password: string;
   new_password: string;
+}
+
+export interface EmailChangeInput {
+  current_password: string;
+  new_email: string;
+}
+
+export interface AccountChangeAccepted {
+  user: PublicUser;
+  confirmation_sent: boolean;
+  pending_email?: string;
 }
 
 export async function register(input: RegisterInput): Promise<PublicUser> {
@@ -58,14 +70,33 @@ export async function updateProfile(token: string, input: ProfileUpdateInput): P
   return response.data;
 }
 
-export async function changePassword(token: string, input: PasswordChangeInput): Promise<void> {
-  await browserJSON<void>("/me/password", {
+export async function changePassword(token: string, input: PasswordChangeInput): Promise<AccountChangeAccepted> {
+  const response = await browserJSON<{ data: PublicUser; meta: { confirmation_sent: boolean } }>("/me/password", {
     method: "PATCH",
     headers: authHeaders(token, {
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(input),
   });
+  return {
+    user: response.data,
+    confirmation_sent: response.meta.confirmation_sent,
+  };
+}
+
+export async function changeEmail(token: string, input: EmailChangeInput): Promise<AccountChangeAccepted> {
+  const response = await browserJSON<{ data: PublicUser; meta: { confirmation_sent: boolean; pending_email: string } }>("/me/email", {
+    method: "PATCH",
+    headers: authHeaders(token, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(input),
+  });
+  return {
+    user: response.data,
+    confirmation_sent: response.meta.confirmation_sent,
+    pending_email: response.meta.pending_email,
+  };
 }
 
 export async function resendEmailVerification(token = ""): Promise<PublicUser> {
@@ -84,6 +115,24 @@ export async function logout(): Promise<void> {
 
 export async function verifyEmail(token: string): Promise<PublicUser> {
   const response = await browserJSON<{ data: PublicUser }>("/auth/email/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  return response.data;
+}
+
+export async function confirmPasswordChange(token: string): Promise<PublicUser> {
+  const response = await browserJSON<{ data: PublicUser }>("/auth/password/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  return response.data;
+}
+
+export async function confirmEmailChange(token: string): Promise<PublicUser> {
+  const response = await browserJSON<{ data: PublicUser }>("/auth/email/change/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
