@@ -64,6 +64,18 @@ func (c *Client) GetObject(ctx context.Context, bucket string, key string) (io.R
 	return object, nil
 }
 
+func (c *Client) GetObjectRange(ctx context.Context, bucket string, key string, start int64, end int64) (io.ReadCloser, error) {
+	options := miniogo.GetObjectOptions{}
+	if err := options.SetRange(start, end); err != nil {
+		return nil, fmt.Errorf("set minio object range %q/%q %d-%d: %w", bucket, key, start, end, err)
+	}
+	object, err := c.client.GetObject(ctx, bucket, key, options)
+	if err != nil {
+		return nil, fmt.Errorf("get minio object range %q/%q %d-%d: %w", bucket, key, start, end, err)
+	}
+	return object, nil
+}
+
 func (c *Client) RemoveObject(ctx context.Context, bucket string, key string) error {
 	if err := c.client.RemoveObject(ctx, bucket, key, miniogo.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("remove minio object %q/%q: %w", bucket, key, err)

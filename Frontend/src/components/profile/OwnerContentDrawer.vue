@@ -3,7 +3,7 @@ import { computed, defineComponent, h, ref, watch, type PropType } from "vue";
 import { Edit3, Images, KeyRound, Link, Trash2, X } from "lucide";
 import ContentMetadataEditor from "./ContentMetadataEditor.vue";
 import GalleryManager from "./GalleryManager.vue";
-import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { publicAPIURL } from "../../lib/api/client";
 import { BYTE_UNITS } from "../../lib/config/runtime";
 import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
@@ -81,7 +81,7 @@ function canCopyOwnerDownload(item: OwnerContentItem) {
 }
 
 function ownerDownloadURL(item: OwnerContentItem) {
-  return new URL(`${getPublicAPIBaseURL()}/me/content/${item.id}/download`, window.location.href).href;
+  return publicAPIURL(`/me/content/${item.id}/download`);
 }
 
 async function copyText(value: string, label: string) {

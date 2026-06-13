@@ -492,6 +492,7 @@ paths:
   /api/v1/content/{content_id}/download:
     get:
       summary: Download a published public .bee package through the backend
+      description: Supports HTTP byte range requests for Basis clients that download only the package connector and the platform-specific section.
       operationId: downloadPublicContentPackage
       parameters:
         - name: content_id
@@ -500,14 +501,141 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: Range
+          in: header
+          required: false
+          description: Optional single byte range, for example `bytes=0-7`.
+          schema:
+            type: string
       responses:
         "200":
           description: Binary .bee package stream.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Length:
+              description: Full package size in bytes.
+              schema:
+                type: integer
+                format: int64
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
+        "206":
+          description: Partial .bee package stream for a satisfiable byte range.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Returned byte range and full package size.
+              schema:
+                type: string
+              example: bytes 0-7/80723368
+            Content-Length:
+              description: Returned range size in bytes.
+              schema:
+                type: integer
+                format: int64
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "416":
+          description: Requested byte range is not satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Full package size for retrying with a valid range.
+              schema:
+                type: string
+              example: bytes */80723368
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          $ref: "#/components/responses/Error"
+    head:
+      summary: Inspect a published public .bee package download
+      description: Returns download headers, including byte range support, without streaming the package.
+      operationId: headPublicContentPackageDownload
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Range
+          in: header
+          required: false
+          description: Optional single byte range, for example `bytes=0-7`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Package exists and can be downloaded.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Length:
+              description: Full package size in bytes.
+              schema:
+                type: integer
+                format: int64
+        "206":
+          description: Requested byte range is satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Returned byte range and full package size.
+              schema:
+                type: string
+              example: bytes 0-7/80723368
+            Content-Length:
+              description: Returned range size in bytes.
+              schema:
+                type: integer
+                format: int64
+        "416":
+          description: Requested byte range is not satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Full package size for retrying with a valid range.
+              schema:
+                type: string
+              example: bytes */80723368
         default:
           $ref: "#/components/responses/Error"
   /api/v1/media/{image_id}:
@@ -950,6 +1078,7 @@ paths:
   /api/v1/me/content/{content_id}/download:
     get:
       summary: Download an owned published .bee package through the backend
+      description: Supports HTTP byte range requests for Basis clients that download only the package connector and the platform-specific section.
       operationId: downloadOwnerContentPackage
       security:
         - bearerAuth: []
@@ -961,14 +1090,144 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: Range
+          in: header
+          required: false
+          description: Optional single byte range, for example `bytes=0-7`.
+          schema:
+            type: string
       responses:
         "200":
           description: Binary .bee package stream for the owner.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Length:
+              description: Full package size in bytes.
+              schema:
+                type: integer
+                format: int64
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
+        "206":
+          description: Partial .bee package stream for a satisfiable byte range.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Returned byte range and full package size.
+              schema:
+                type: string
+              example: bytes 0-7/80723368
+            Content-Length:
+              description: Returned range size in bytes.
+              schema:
+                type: integer
+                format: int64
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "416":
+          description: Requested byte range is not satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Full package size for retrying with a valid range.
+              schema:
+                type: string
+              example: bytes */80723368
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          $ref: "#/components/responses/Error"
+    head:
+      summary: Inspect an owned published .bee package download
+      description: Returns download headers, including byte range support, without streaming the package.
+      operationId: headOwnerContentPackageDownload
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Range
+          in: header
+          required: false
+          description: Optional single byte range, for example `bytes=0-7`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Package exists and can be downloaded by the owner.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Length:
+              description: Full package size in bytes.
+              schema:
+                type: integer
+                format: int64
+        "206":
+          description: Requested byte range is satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Returned byte range and full package size.
+              schema:
+                type: string
+              example: bytes 0-7/80723368
+            Content-Length:
+              description: Returned range size in bytes.
+              schema:
+                type: integer
+                format: int64
+        "416":
+          description: Requested byte range is not satisfiable.
+          headers:
+            Accept-Ranges:
+              description: Indicates byte range support.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            Content-Range:
+              description: Full package size for retrying with a valid range.
+              schema:
+                type: string
+              example: bytes */80723368
         default:
           $ref: "#/components/responses/Error"
   /api/v1/auth/register:

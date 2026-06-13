@@ -14,7 +14,7 @@ import {
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import SocialPanel from "../../components/content/SocialPanel.vue";
 import LucideIcon from "../../components/ui/LucideIcon.astro";
-import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { getPublicAPIBaseURL, publicAPIURL } from "../../lib/api/client";
 import { getPublicContent } from "../../lib/api/content";
 import { publicMediaURL } from "../../lib/api/media-url";
 import { BYTE_UNITS, HASH_DISPLAY } from "../../lib/config/runtime";
@@ -48,8 +48,9 @@ try {
 const pageTitle = item ? `${item.title} - BeeBa` : `${t.content.unavailableTitle} - BeeBa`;
 const description = item?.description || t.content.unavailableDescription;
 const canonicalPath = `/content/${id}`;
-const downloadURL = item ? `${publicAPIBaseURL}/content/${item.id}/download` : "";
-const absoluteDownloadURL = downloadURL ? new URL(downloadURL, Astro.url).href : "";
+const downloadAPIPath = item ? `/content/${item.id}/download` : "";
+const downloadURL = downloadAPIPath ? `${publicAPIBaseURL}${downloadAPIPath}` : "";
+const absoluteDownloadURL = downloadAPIPath ? publicAPIURL(downloadAPIPath) : "";
 const loginHref = `${localizedPath(locale, "/login")}?next=${encodeURIComponent(Astro.url.pathname)}`;
 const gallery = item ? uniqueImages(item) : [];
 const primaryImage = gallery[0];

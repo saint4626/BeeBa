@@ -1,8 +1,9 @@
 import type { APIErrorResponse } from "./types";
-import { PUBLIC_API_BASE_URL } from "astro:env/client";
+import { PUBLIC_API_BASE_URL, PUBLIC_SITE_URL } from "astro:env/client";
 
 const fallbackServerAPIBaseURL = "http://127.0.0.1:8088/api/v1";
 const fallbackBrowserAPIBaseURL = PUBLIC_API_BASE_URL;
+const fallbackPublicSiteURL = PUBLIC_SITE_URL;
 
 export function getServerAPIBaseURL(): string {
   return trimTrailingSlash(
@@ -31,6 +32,23 @@ export function getPublicAPIBaseURL(): string {
       import.meta.env.PUBLIC_API_BASE_URL ??
       fallbackBrowserAPIBaseURL,
   );
+}
+
+export function getPublicSiteURL(): string {
+  const configured =
+    runtimeEnv().PUBLIC_SITE_URL ??
+    import.meta.env.PUBLIC_SITE_URL ??
+    fallbackPublicSiteURL;
+  return absoluteBaseURL(configured, isBrowser() ? window.location.origin : fallbackPublicSiteURL);
+}
+
+export function publicAPIURL(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const publicAPIBaseURL = getPublicAPIBaseURL();
+  if (isAbsoluteURL(publicAPIBaseURL)) {
+    return new URL(`${trimTrailingSlash(publicAPIBaseURL)}${normalizedPath}`).href;
+  }
+  return new URL(`${trimTrailingSlash(publicAPIBaseURL)}${normalizedPath}`, getPublicSiteURL()).href;
 }
 
 export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
@@ -71,6 +89,20 @@ function browserAPIBaseURL(value: string): string {
   } catch {
     return trimTrailingSlash(trimmed);
   }
+}
+
+function absoluteBaseURL(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  const candidate = trimmed || fallback;
+  try {
+    return trimTrailingSlash(new URL(candidate).href);
+  } catch {
+    return trimTrailingSlash(candidate);
+  }
+}
+
+function isAbsoluteURL(value: string): boolean {
+  return /^https?:\/\//i.test(value);
 }
 
 function isLoopbackHost(hostname: string): boolean {
