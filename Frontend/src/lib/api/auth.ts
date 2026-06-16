@@ -1,5 +1,5 @@
 import { authHeaders, browserJSON } from "./browser";
-import type { PublicUser, TokenPair } from "./types";
+import type { AuthSession, PublicUser } from "./types";
 
 export interface RegisterInput {
   email: string;
@@ -43,8 +43,8 @@ export async function register(input: RegisterInput): Promise<PublicUser> {
   return response.data;
 }
 
-export async function login(input: LoginInput): Promise<TokenPair> {
-  const response = await browserJSON<{ data: TokenPair }>("/auth/login", {
+export async function login(input: LoginInput): Promise<AuthSession> {
+  const response = await browserJSON<{ data: AuthSession }>("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

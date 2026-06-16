@@ -1274,7 +1274,7 @@ paths:
               $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Login succeeded, returned revocable opaque tokens, and set HttpOnly browser session cookies plus a non-HttpOnly CSRF cookie for browser writes.
+          description: Login succeeded and set HttpOnly browser session cookies plus a non-HttpOnly CSRF cookie for browser writes. Token values are not returned in the response body.
           content:
             application/json:
               schema:
@@ -1283,7 +1283,7 @@ paths:
                   - data
                 properties:
                   data:
-                    $ref: "#/components/schemas/TokenPair"
+                    $ref: "#/components/schemas/AuthSession"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/auth/email/verify:
@@ -1456,7 +1456,7 @@ paths:
               $ref: "#/components/schemas/RefreshRequest"
       responses:
         "200":
-          description: New token pair. Browser clients also receive rotated HttpOnly session cookies.
+          description: Session rotated. Cookie-authenticated browser clients receive rotated cookies and safe session metadata; token-body clients receive a new token pair.
           content:
             application/json:
               schema:
@@ -1465,7 +1465,9 @@ paths:
                   - data
                 properties:
                   data:
-                    $ref: "#/components/schemas/TokenPair"
+                    oneOf:
+                      - $ref: "#/components/schemas/AuthSession"
+                      - $ref: "#/components/schemas/TokenPair"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/auth/logout:
@@ -3859,6 +3861,22 @@ components:
         refresh_expires_in:
           type: integer
           description: Refresh token lifetime in seconds.
+        user:
+          $ref: "#/components/schemas/PublicUser"
+    AuthSession:
+      type: object
+      required:
+        - expires_in
+        - refresh_expires_in
+        - user
+      additionalProperties: false
+      properties:
+        expires_in:
+          type: integer
+          description: Access cookie lifetime in seconds.
+        refresh_expires_in:
+          type: integer
+          description: Refresh cookie lifetime in seconds.
         user:
           $ref: "#/components/schemas/PublicUser"
     RefreshRequest:

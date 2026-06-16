@@ -1,4 +1,4 @@
-import type { PublicUser, TokenPair } from "../api/types";
+import type { AuthSession, PublicUser } from "../api/types";
 
 export const AUTH_USER_KEY = "beeba.publicUser";
 
@@ -18,7 +18,7 @@ export function readAuthSession(): BrowserAuthSession | null {
   }
 }
 
-export function publishAuthSession(session: TokenPair) {
+export function publishAuthSession(session: AuthSession) {
   if (typeof window === "undefined") return;
   publishSessionUser(session.user);
 }

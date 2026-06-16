@@ -8,6 +8,13 @@ const chunkSizeWarningLimitKiB = 650;
 const siteURL = process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321';
 const absoluteSiteURL = siteURL.endsWith('/') ? siteURL : `${siteURL}/`;
 const contentSitemapURL = new URL('content-sitemap.xml', absoluteSiteURL).href;
+const siteHostname = new URL(absoluteSiteURL).hostname;
+const localHostnames = new Set(['localhost', '127.0.0.1', '::1']);
+const connectSrc = [
+  "connect-src 'self'",
+  ...(localHostnames.has(siteHostname) ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
+  'https://challenges.cloudflare.com',
+].join(' ');
 const sitemapExcludedPathPrefixes = [
   '/admin',
   '/content-sitemap.xml',
@@ -127,7 +134,7 @@ export default defineConfig({
         "img-src 'self' data: blob:",
         "font-src 'self'",
         "frame-src https://challenges.cloudflare.com",
-        "connect-src 'self' http://localhost:* http://127.0.0.1:* https://challenges.cloudflare.com",
+        connectSrc,
       ],
     },
   },

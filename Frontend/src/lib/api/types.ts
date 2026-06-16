@@ -177,13 +177,16 @@ export interface PublicUser {
   updated_at: string;
 }
 
-export interface TokenPair {
-  access_token: string;
-  refresh_token: string;
-  token_type: "Bearer";
+export interface AuthSession {
   expires_in: number;
   refresh_expires_in: number;
   user: PublicUser;
+}
+
+export interface TokenPair extends AuthSession {
+  access_token: string;
+  refresh_token: string;
+  token_type: "Bearer";
 }
 
 export interface ContentUploadCreated {

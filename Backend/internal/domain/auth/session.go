@@ -25,6 +25,20 @@ type TokenPair struct {
 	User             users.PublicUser `json:"user"`
 }
 
+type SessionInfo struct {
+	ExpiresIn        int64            `json:"expires_in"`
+	RefreshExpiresIn int64            `json:"refresh_expires_in"`
+	User             users.PublicUser `json:"user"`
+}
+
+func (p TokenPair) SessionInfo() SessionInfo {
+	return SessionInfo{
+		ExpiresIn:        p.ExpiresIn,
+		RefreshExpiresIn: p.RefreshExpiresIn,
+		User:             p.User,
+	}
+}
+
 type UserWithPassword struct {
 	User         users.PublicUser
 	PasswordHash string

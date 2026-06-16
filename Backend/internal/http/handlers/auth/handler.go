@@ -312,7 +312,7 @@ func (h Handler) Login(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to login")
 	}
 	return c.JSON(fiber.Map{
-		"data": pair,
+		"data": pair.SessionInfo(),
 	})
 }
 
@@ -402,6 +402,11 @@ func (h Handler) Refresh(c fiber.Ctx) error {
 
 	if err := setSessionCookies(c, pair); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to refresh session")
+	}
+	if usesRefreshCookie {
+		return c.JSON(fiber.Map{
+			"data": pair.SessionInfo(),
+		})
 	}
 	return c.JSON(fiber.Map{
 		"data": pair,

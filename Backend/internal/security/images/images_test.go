@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"testing"
 
 	"github.com/deepteams/webp"
@@ -72,5 +73,52 @@ func TestReencodeConvertsAvatarToBoundedWebP(t *testing.T) {
 	}
 	if _, err := webp.DecodeConfig(bytes.NewReader(processed)); err != nil {
 		t.Fatalf("decode avatar webp config: %v", err)
+	}
+}
+
+func TestReencodePreservesPNGAvatarAlpha(t *testing.T) {
+	source := image.NewNRGBA(image.Rect(0, 0, 96, 96))
+	for y := 24; y < 72; y++ {
+		for x := 24; x < 72; x++ {
+			source.SetNRGBA(x, y, color.NRGBA{R: 255, G: 215, B: 0, A: 255})
+		}
+	}
+
+	var input bytes.Buffer
+	if err := png.Encode(&input, source); err != nil {
+		t.Fatalf("encode source png: %v", err)
+	}
+
+	metadata, err := ReadAndValidate(bytes.NewReader(input.Bytes()), int64(input.Len()))
+	if err != nil {
+		t.Fatalf("validate transparent png: %v", err)
+	}
+	if metadata.MIMEType != MIMEPNG {
+		t.Fatalf("validated mime type = %q, want %q", metadata.MIMEType, MIMEPNG)
+	}
+
+	processed, mimeType, width, height, extension, err := Reencode(bytes.NewReader(input.Bytes()), AvatarProfile())
+	if err != nil {
+		t.Fatalf("reencode transparent png: %v", err)
+	}
+
+	if mimeType != MIMEWebP || extension != ".webp" {
+		t.Fatalf("output = %q %q, want image/webp .webp", mimeType, extension)
+	}
+	if width != 96 || height != 96 {
+		t.Fatalf("size = %dx%d, want 96x96", width, height)
+	}
+
+	decoded, err := webp.Decode(bytes.NewReader(processed))
+	if err != nil {
+		t.Fatalf("decode processed webp: %v", err)
+	}
+	transparentCorner := color.NRGBAModel.Convert(decoded.At(0, 0)).(color.NRGBA)
+	opaqueCenter := color.NRGBAModel.Convert(decoded.At(48, 48)).(color.NRGBA)
+	if transparentCorner.A > 8 {
+		t.Fatalf("transparent corner alpha = %d, want <= 8", transparentCorner.A)
+	}
+	if opaqueCenter.A < 247 {
+		t.Fatalf("opaque center alpha = %d, want >= 247", opaqueCenter.A)
 	}
 }

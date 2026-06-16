@@ -55,8 +55,11 @@ const initials = computed(() => owner.user?.username?.slice(0, 2).toUpperCase() 
 
 watch(
   () => owner.user?.avatar_image_id,
-  () => {
+  (nextAvatarID) => {
     avatarLoadFailed.value = false;
+    if (loading.value && !nextAvatarID) {
+      return;
+    }
     clearLocalPreview();
   },
 );
@@ -127,7 +130,7 @@ function clearLocalPreview() {
       :aria-label="t.avatarUploadLabel"
     >
       <input type="file" accept="image/png,image/jpeg" :disabled="loading || !owner.isAuthenticated" @change="onAvatarChange" />
-      <span class="avatar-preview avatar-preview--interactive">
+      <span class="avatar-preview avatar-preview--interactive" :class="{ 'avatar-preview--image': Boolean(visibleAvatarURL) }">
         <img v-if="visibleAvatarURL" :src="visibleAvatarURL" alt="" @error="avatarLoadFailed = true" />
         <span v-else>{{ initials }}</span>
         <span class="avatar-uploader__overlay" aria-hidden="true">
