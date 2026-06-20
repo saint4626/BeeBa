@@ -237,6 +237,9 @@ Minimum production variables:
 | `BEEBA_MINIO_ENDPOINT` | Storage endpoint, normally `s3.example.org` |
 | `BEEBA_MINIO_USE_SSL` | `true` for the split storage server |
 | `BEEBA_SECRET_BOX_KEY` | Base64 32-byte encryption key for sensitive stored values |
+| `BEEBA_HTTP_READ_TIMEOUT` | Must allow large multipart uploads, normally `20m` |
+| `BEEBA_HTTP_WRITE_TIMEOUT` | Must allow upload handlers to finish, normally `20m` |
+| `BEEBA_UPLOAD_STORAGE_TIMEOUT` | Upload-to-storage deadline, normally `20m` |
 | `BEEBA_RESEND_API_KEY` | Transactional email provider key |
 | `BEEBA_TURNSTILE_SECRET_KEY` | Cloudflare Turnstile backend secret |
 | `PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile frontend site key |

@@ -22,8 +22,8 @@ const (
 	defaultReadinessTimeout = 2 * time.Second
 	defaultShutdownTimeout  = 10 * time.Second
 	defaultUploadTimeout    = 20 * time.Minute
-	defaultReadTimeout      = 30 * time.Second
-	defaultWriteTimeout     = 2 * time.Minute
+	defaultReadTimeout      = defaultUploadTimeout
+	defaultWriteTimeout     = defaultUploadTimeout
 	defaultIdleTimeout      = 2 * time.Minute
 	defaultRequestBodyLimit = int(defaultMaxUploadBytes + 1024*1024)
 	defaultQuarantineBucket = "beeba-content-quarantine"

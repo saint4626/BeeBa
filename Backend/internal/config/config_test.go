@@ -92,6 +92,22 @@ func TestLoadUserStorageQuotaOverride(t *testing.T) {
 	}
 }
 
+func TestHTTPTimeoutDefaultsAllowLargeMultipartUploads(t *testing.T) {
+	t.Setenv("BEEBA_ENV", "development")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.HTTPReadTimeout < cfg.UploadStorageTimeout {
+		t.Fatalf("HTTPReadTimeout = %s, want at least UploadStorageTimeout %s", cfg.HTTPReadTimeout, cfg.UploadStorageTimeout)
+	}
+	if cfg.HTTPWriteTimeout < cfg.UploadStorageTimeout {
+		t.Fatalf("HTTPWriteTimeout = %s, want at least UploadStorageTimeout %s", cfg.HTTPWriteTimeout, cfg.UploadStorageTimeout)
+	}
+}
+
 func TestLoadRejectsInvalidUserStorageQuota(t *testing.T) {
 	t.Setenv("BEEBA_ENV", "development")
 	t.Setenv("BEEBA_USER_STORAGE_QUOTA_BYTES", "0")
