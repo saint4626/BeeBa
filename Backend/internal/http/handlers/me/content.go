@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"beeba.org/internal/http/middleware/authz"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -27,6 +29,7 @@ type ContentStore interface {
 	ListOwned(ctx context.Context, ownerID string, filter content.OwnerListFilter) (content.OwnerPage, error)
 	OwnerStorageUsage(ctx context.Context, ownerID string, limitBytes int64) (content.OwnerStorageUsage, error)
 	UpdateOwned(ctx context.Context, ownerID string, contentID string, input content.OwnerUpdateInput) (content.OwnerItem, error)
+	EnsureUnlistedDownloadToken(ctx context.Context, ownerID string, contentID string) (string, error)
 	DeleteOwned(ctx context.Context, ownerID string, contentID string) error
 }
 
@@ -118,6 +121,38 @@ func (h ContentHandler) Update(c fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{"data": item})
+}
+
+func (h ContentHandler) DownloadLink(c fiber.Ctx) error {
+	if h.store == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "content repository unavailable")
+	}
+	session, ok := authz.CurrentSession(c)
+	if !ok {
+		return fiber.NewError(fiber.StatusUnauthorized, "Missing authenticated session")
+	}
+	contentID := strings.TrimSpace(c.Params("contentID"))
+	if _, err := uuid.Parse(contentID); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "content id is invalid")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+	defer cancel()
+
+	token, err := h.store.EnsureUnlistedDownloadToken(ctx, session.User.ID, contentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "private downloadable content not found")
+	}
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to prepare private download link")
+	}
+
+	downloadPath := "/content/" + url.PathEscape(contentID) + "/download?access=" + url.QueryEscape(token)
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"data": fiber.Map{
+			"download_path": downloadPath,
+		},
+	})
 }
 
 func (h ContentHandler) Delete(c fiber.Ctx) error {

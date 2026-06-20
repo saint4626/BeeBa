@@ -23,6 +23,13 @@ func (r DownloadRepository) GetPublicTarget(ctx context.Context, contentID strin
   AND cf.bucket <> $2`, contentID, "", quarantineBucket)
 }
 
+func (r DownloadRepository) GetUnlistedTarget(ctx context.Context, contentID string, tokenHash string, quarantineBucket string) (downloads.Target, error) {
+	return r.getTarget(ctx, `
+  AND ci.visibility = 'private'
+  AND ci.unlisted_download_token_hash = $3
+  AND cf.bucket <> $2`, contentID, tokenHash, quarantineBucket)
+}
+
 func (r DownloadRepository) GetOwnerTarget(ctx context.Context, contentID string, userID string, quarantineBucket string) (downloads.Target, error) {
 	return r.getTarget(ctx, `
   AND ci.author_id = $3::uuid

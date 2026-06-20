@@ -12,6 +12,7 @@ import (
 	"beeba.org/internal/config"
 	downloaddomain "beeba.org/internal/domain/downloads"
 	"beeba.org/internal/http/middleware/authz"
+	"beeba.org/internal/security/tokens"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ import (
 
 type Store interface {
 	GetPublicTarget(ctx context.Context, contentID string, quarantineBucket string) (downloaddomain.Target, error)
+	GetUnlistedTarget(ctx context.Context, contentID string, tokenHash string, quarantineBucket string) (downloaddomain.Target, error)
 	GetOwnerTarget(ctx context.Context, contentID string, userID string, quarantineBucket string) (downloaddomain.Target, error)
 	RecordEvent(ctx context.Context, input downloaddomain.EventInput) error
 }
@@ -51,7 +53,7 @@ func (h Handler) Public(c fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(c.Context(), 30*time.Second)
 	defer cancel()
 
-	target, err := h.store.GetPublicTarget(ctx, contentID, h.cfg.QuarantineBucket)
+	target, err := h.publicTarget(ctx, contentID, strings.TrimSpace(c.Query("access")))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "download not found")
 	}
@@ -59,6 +61,19 @@ func (h Handler) Public(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to load download")
 	}
 	return h.stream(c, target, nil)
+}
+
+func (h Handler) publicTarget(ctx context.Context, contentID string, accessToken string) (downloaddomain.Target, error) {
+	if accessToken != "" {
+		target, err := h.store.GetUnlistedTarget(ctx, contentID, tokens.Hash(accessToken), h.cfg.QuarantineBucket)
+		if err == nil {
+			return target, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return downloaddomain.Target{}, err
+		}
+	}
+	return h.store.GetPublicTarget(ctx, contentID, h.cfg.QuarantineBucket)
 }
 
 func (h Handler) Owner(c fiber.Ctx) error {

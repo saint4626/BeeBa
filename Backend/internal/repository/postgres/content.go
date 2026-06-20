@@ -10,6 +10,7 @@ import (
 	"beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/jobs"
 	"beeba.org/internal/security/secretbox"
+	"beeba.org/internal/security/tokens"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -701,13 +702,15 @@ FOR UPDATE OF ci`, contentID, ownerID).Scan(
 
 	newStatus := currentStatus
 	clearPublicationState := false
-	if ownerUpdateRequiresModeration(currentStatus) {
+	if ownerUpdateNeedsModeration(currentStatus, input) {
 		if latestScanStatus == nil || *latestScanStatus != "clean" {
 			return content.OwnerItem{}, pgx.ErrNoRows
 		}
 		newStatus = "pending_moderation"
 		clearPublicationState = true
 	}
+	wasSearchVisible := currentStatus == "published" && currentVisibility == "public"
+	willSearchVisible := newStatus == "published" && visibility == "public" && !clearPublicationState
 
 	_, err = tx.Exec(ctx, `
 UPDATE content_items
@@ -741,8 +744,12 @@ WHERE id = $1::uuid
 		}
 	}
 
-	if currentStatus == "published" && currentVisibility == "public" {
+	if wasSearchVisible && !willSearchVisible {
 		if err := enqueueContentSearchTx(ctx, tx, contentID, "delete_content"); err != nil {
+			return content.OwnerItem{}, err
+		}
+	} else if willSearchVisible {
+		if err := enqueueContentSearchTx(ctx, tx, contentID, "upsert_content"); err != nil {
 			return content.OwnerItem{}, err
 		}
 	}
@@ -759,6 +766,13 @@ WHERE id = $1::uuid
 	return item, nil
 }
 
+func ownerUpdateNeedsModeration(status string, input content.OwnerUpdateInput) bool {
+	if !ownerUpdateRequiresModeration(status) {
+		return false
+	}
+	return input.Title != nil || input.Description != nil || input.NSFW != nil || input.Tags != nil
+}
+
 func ownerUpdateRequiresModeration(status string) bool {
 	switch status {
 	case "approved", "published", "rejected", "hidden":
@@ -766,6 +780,84 @@ func ownerUpdateRequiresModeration(status string) bool {
 	default:
 		return false
 	}
+}
+
+func (r ContentRepository) EnsureUnlistedDownloadToken(ctx context.Context, ownerID string, contentID string) (string, error) {
+	if r.secrets == nil {
+		return "", fmt.Errorf("secret box is unavailable")
+	}
+
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", fmt.Errorf("begin unlisted download token transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var encryptedToken *string
+	err = tx.QueryRow(ctx, `
+SELECT ci.unlisted_download_token_ciphertext
+FROM content_items ci
+WHERE ci.id = $1::uuid
+  AND ci.author_id = $2::uuid
+  AND ci.status = 'published'
+  AND ci.visibility = 'private'
+  AND ci.deleted_at IS NULL
+  AND ci.hidden_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM content_files cf
+    WHERE cf.content_id = ci.id
+      AND cf.scan_status = 'clean'
+  )
+FOR UPDATE OF ci`,
+		contentID,
+		ownerID,
+	).Scan(&encryptedToken)
+	if err != nil {
+		return "", err
+	}
+
+	if encryptedToken != nil {
+		token, err := r.secrets.DecryptString(*encryptedToken)
+		if err != nil {
+			return "", fmt.Errorf("decrypt unlisted download token: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", fmt.Errorf("commit unlisted download token read: %w", err)
+		}
+		return token, nil
+	}
+
+	token, err := tokens.New("bb_dl_")
+	if err != nil {
+		return "", fmt.Errorf("generate unlisted download token: %w", err)
+	}
+	ciphertext, err := r.secrets.EncryptString(token)
+	if err != nil {
+		return "", fmt.Errorf("encrypt unlisted download token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+UPDATE content_items
+SET
+  unlisted_download_token_hash = $3,
+  unlisted_download_token_ciphertext = $4,
+  unlisted_download_token_created_at = now(),
+  updated_at = now()
+WHERE id = $1::uuid
+  AND author_id = $2::uuid`,
+		contentID,
+		ownerID,
+		tokens.Hash(token),
+		ciphertext,
+	); err != nil {
+		return "", fmt.Errorf("store unlisted download token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit unlisted download token transaction: %w", err)
+	}
+	return token, nil
 }
 
 func (r ContentRepository) DeleteOwned(ctx context.Context, ownerID string, contentID string) error {

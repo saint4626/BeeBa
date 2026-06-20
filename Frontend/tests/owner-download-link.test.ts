@@ -12,18 +12,23 @@ assert.ok(
   drawer.includes("basisContentDownloadPath(item)"),
   "profile copy action should use the shared Basis download path helper",
 );
+assert.ok(
+  drawer.includes("getOwnedContentDownloadLink"),
+  "private owner assets should request an unlisted download link instead of copying an authenticated /me URL",
+);
+assert.ok(
+  drawer.includes('item.visibility === "private"'),
+  "profile copy action should branch private assets to the unlisted link endpoint",
+);
 
 const helper = readFileSync("src/lib/api/download-url.ts", "utf8");
 
 assert.ok(
-  helper.includes('item.visibility === "public"'),
-  "public owner assets should copy the anonymous public download endpoint",
-);
-assert.ok(
   helper.includes("`/content/${contentID}/download`"),
   "public owner assets should use /content/:id/download",
 );
-assert.ok(
-  helper.includes("`/me/content/${contentID}/download`"),
-  "non-public owner assets should keep the authenticated owner endpoint",
+assert.doesNotMatch(
+  helper,
+  /\/me\/content/,
+  "Basis copy links must not use authenticated /me download endpoints",
 );

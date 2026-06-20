@@ -4,6 +4,7 @@ import { createContentUploadFormData } from "./upload-form-data";
 import { PAGE_LIMITS } from "../config/runtime";
 import type {
   ContentUploadCreated,
+  OwnerContentDownloadLink,
   OwnerContentItem,
   OwnerContentList,
   OwnerContentListResponse,
@@ -149,6 +150,17 @@ export async function updateOwnedContent(
     }),
     body: JSON.stringify(input),
   });
+  return response.data;
+}
+
+export async function getOwnedContentDownloadLink(accessToken: string, contentID: string): Promise<OwnerContentDownloadLink> {
+  const response = await browserJSON<{ data: OwnerContentDownloadLink }>(
+    `/me/content/${encodeURIComponent(contentID)}/download-link`,
+    {
+      method: "POST",
+      headers: authHeaders(accessToken),
+    },
+  );
   return response.data;
 }
 

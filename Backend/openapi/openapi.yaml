@@ -491,8 +491,8 @@ paths:
           $ref: "#/components/responses/Error"
   /api/v1/content/{content_id}/download:
     get:
-      summary: Download a published public .bee package through the backend
-      description: Supports HTTP byte range requests for Basis clients that download only the package connector and the platform-specific section.
+      summary: Download a published public or unlisted private .bee package through the backend
+      description: Supports HTTP byte range requests for Basis clients that download only the package connector and the platform-specific section. Public content works without a query token; private unlisted content requires an owner-generated `access` token.
       operationId: downloadPublicContentPackage
       parameters:
         - name: content_id
@@ -501,6 +501,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: access
+          in: query
+          required: false
+          description: Owner-generated unlisted download token for a private content item.
+          schema:
+            type: string
         - name: Range
           in: header
           required: false
@@ -572,8 +578,8 @@ paths:
         default:
           $ref: "#/components/responses/Error"
     head:
-      summary: Inspect a published public .bee package download
-      description: Returns download headers, including byte range support, without streaming the package.
+      summary: Inspect a published public or unlisted private .bee package download
+      description: Returns download headers, including byte range support, without streaming the package. Private unlisted content requires an owner-generated `access` token.
       operationId: headPublicContentPackageDownload
       parameters:
         - name: content_id
@@ -582,6 +588,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: access
+          in: query
+          required: false
+          description: Owner-generated unlisted download token for a private content item.
+          schema:
+            type: string
         - name: Range
           in: header
           required: false
@@ -1073,6 +1085,35 @@ paths:
       responses:
         "204":
           description: Image removed.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/content/{content_id}/download-link:
+    post:
+      summary: Create or read an owner private unlisted download link
+      description: Returns a Basis-compatible API v1-relative download path for a published private content item. The returned path uses `/content/{content_id}/download?access=...` under `/api/v1` so external Basis clients can download without a BeeBa browser session while the item remains hidden from catalog, search, and sitemap.
+      operationId: getOwnerContentDownloadLink
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Private unlisted download path prepared.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerContentDownloadLink"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/me/content/{content_id}/download:
@@ -3079,6 +3120,15 @@ components:
           type: integer
           format: int64
           minimum: 1
+    OwnerContentDownloadLink:
+      type: object
+      required:
+        - download_path
+      properties:
+        download_path:
+          type: string
+          description: API v1-relative Basis download path containing the unlisted access token.
+          example: /content/3d194549-02a0-4966-8583-59254c19f64b/download?access=bb_dl_example
     OwnerContentUpdateRequest:
       type: object
       minProperties: 1

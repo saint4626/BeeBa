@@ -174,6 +174,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	meGroup.Get("/content", meContentHandler.List)
 	meGroup.Patch("/content/:contentID", meContentHandler.Update)
 	meGroup.Delete("/content/:contentID", meContentHandler.Delete)
+	meGroup.Post("/content/:contentID/download-link", rate("download_owner_link", cfg.RateLimits.DownloadOwner), meContentHandler.DownloadLink)
 	meGroup.Get("/content/:contentID/download", rate("download_owner", cfg.RateLimits.DownloadOwner), downloadHandler.Owner)
 	meGroup.Head("/content/:contentID/download", rate("download_owner", cfg.RateLimits.DownloadOwner), downloadHandler.Owner)
 	meGroup.Get("/media/:imageID", mediaHandler.Owner)

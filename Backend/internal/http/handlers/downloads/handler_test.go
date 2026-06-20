@@ -9,8 +9,10 @@ import (
 
 	"beeba.org/internal/config"
 	downloaddomain "beeba.org/internal/domain/downloads"
+	"beeba.org/internal/security/tokens"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 )
 
 const testContentID = "11111111-1111-1111-1111-111111111111"
@@ -154,6 +156,73 @@ func TestPublicDownloadHeadAdvertisesRangeWithoutOpeningObject(t *testing.T) {
 	}
 }
 
+func TestUnlistedPrivateDownloadUsesAccessTokenAndRangeSupport(t *testing.T) {
+	accessToken := "bb_dl_secret"
+	store := &fakeStore{
+		publicErr: pgx.ErrNoRows,
+		target:    downloadTarget(int64(len("abcdefghijklmnopqrstuvwxyz"))),
+	}
+	store.target.Visibility = "private"
+	objects := &fakeObjectStore{
+		data: []byte("abcdefghijklmnopqrstuvwxyz"),
+	}
+	app := fiber.New()
+	app.Get("/content/:contentID/download", New(config.Config{}, store, objects).Public)
+
+	req := httptest.NewRequest("GET", "/content/"+testContentID+"/download?access="+accessToken, nil)
+	req.Header.Set("Range", "bytes=0-7")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusPartialContent {
+		t.Fatalf("expected status %d, got %d", fiber.StatusPartialContent, resp.StatusCode)
+	}
+	if store.unlistedCalls != 1 {
+		t.Fatalf("expected one unlisted target lookup, got %d", store.unlistedCalls)
+	}
+	if store.unlistedTokenHash != tokens.Hash(accessToken) {
+		t.Fatalf("expected hashed access token lookup, got %q", store.unlistedTokenHash)
+	}
+	if got := resp.Header.Get("Content-Range"); got != "bytes 0-7/26" {
+		t.Fatalf("expected Content-Range bytes 0-7/26, got %q", got)
+	}
+	if store.events != 1 {
+		t.Fatalf("expected initial unlisted range request to record one download event, got %d", store.events)
+	}
+}
+
+func TestPrivateDownloadWithoutAccessTokenStaysUnavailableThroughPublicEndpoint(t *testing.T) {
+	store := &fakeStore{
+		publicErr: pgx.ErrNoRows,
+		target:    downloadTarget(int64(len("abcdefghijklmnopqrstuvwxyz"))),
+	}
+	store.target.Visibility = "private"
+	objects := &fakeObjectStore{
+		data: []byte("abcdefghijklmnopqrstuvwxyz"),
+	}
+	app := fiber.New()
+	app.Get("/content/:contentID/download", New(config.Config{}, store, objects).Public)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/content/"+testContentID+"/download", nil))
+	if err != nil {
+		t.Fatalf("app.Test returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", fiber.StatusNotFound, resp.StatusCode)
+	}
+	if store.unlistedCalls != 0 {
+		t.Fatalf("expected no unlisted target lookup without access token, got %d", store.unlistedCalls)
+	}
+	if objects.fullReads != 0 || objects.rangeReads != 0 {
+		t.Fatalf("expected no object reads, got full=%d range=%d", objects.fullReads, objects.rangeReads)
+	}
+}
+
 func downloadTarget(size int64) downloaddomain.Target {
 	return downloaddomain.Target{
 		ContentID:  testContentID,
@@ -168,11 +237,23 @@ func downloadTarget(size int64) downloaddomain.Target {
 }
 
 type fakeStore struct {
-	target downloaddomain.Target
-	events int
+	target            downloaddomain.Target
+	publicErr         error
+	unlistedCalls     int
+	unlistedTokenHash string
+	events            int
 }
 
 func (s *fakeStore) GetPublicTarget(context.Context, string, string) (downloaddomain.Target, error) {
+	if s.publicErr != nil {
+		return downloaddomain.Target{}, s.publicErr
+	}
+	return s.target, nil
+}
+
+func (s *fakeStore) GetUnlistedTarget(_ context.Context, _ string, tokenHash string, _ string) (downloaddomain.Target, error) {
+	s.unlistedCalls++
+	s.unlistedTokenHash = tokenHash
 	return s.target, nil
 }
 

@@ -5,6 +5,7 @@ import ContentMetadataEditor from "./ContentMetadataEditor.vue";
 import GalleryManager from "./GalleryManager.vue";
 import { publicAPIURL } from "../../lib/api/client";
 import { basisContentDownloadPath } from "../../lib/api/download-url";
+import { getOwnedContentDownloadLink } from "../../lib/api/uploads";
 import { BYTE_UNITS } from "../../lib/config/runtime";
 import { ui, type Locale } from "../../lib/i18n";
 import { showToast } from "../../lib/ui/toast";
@@ -55,6 +56,7 @@ const t = ui[locale].profile;
 const selected = computed(() => owner.selectedItem);
 const activePanel = ref<DrawerPanelID | null>(null);
 const pendingDeleteID = ref("");
+const pendingCopyID = ref("");
 const expanded = computed(() => activePanel.value !== null);
 
 watch(
@@ -62,6 +64,7 @@ watch(
   () => {
     activePanel.value = null;
     pendingDeleteID.value = "";
+    pendingCopyID.value = "";
   },
 );
 
@@ -81,7 +84,11 @@ function canCopyOwnerDownload(item: OwnerContentItem) {
   return item.status === "published" && item.file?.scan_status === "clean";
 }
 
-function ownerDownloadURL(item: OwnerContentItem) {
+async function ownerDownloadURL(item: OwnerContentItem) {
+  if (item.visibility === "private") {
+    const link = await getOwnedContentDownloadLink(owner.accessToken, item.id);
+    return publicAPIURL(link.download_path);
+  }
   return publicAPIURL(basisContentDownloadPath(item));
 }
 
@@ -99,7 +106,14 @@ async function copyOwnerDownload(item: OwnerContentItem) {
     showToast(t.linkAfterProcessingToast, "info");
     return;
   }
-  await copyText(ownerDownloadURL(item), t.ownerLinkCopied);
+  pendingCopyID.value = item.id;
+  try {
+    await copyText(await ownerDownloadURL(item), t.ownerLinkCopied);
+  } catch (caught) {
+    showToast(caught instanceof Error ? caught.message : ui[locale].common.copyFailed, "error");
+  } finally {
+    pendingCopyID.value = "";
+  }
 }
 
 async function copyPassword(item: OwnerContentItem) {
@@ -179,7 +193,7 @@ function togglePanel(panelID: DrawerPanelID) {
       <button
         class="button button--secondary"
         type="button"
-        :disabled="!canCopyOwnerDownload(selected)"
+        :disabled="!canCopyOwnerDownload(selected) || pendingCopyID === selected.id"
         :title="canCopyOwnerDownload(selected) ? t.copyOwnerLinkTitle : t.availableAfterProcessing"
         @click="copyOwnerDownload(selected)"
       >

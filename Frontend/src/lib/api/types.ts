@@ -147,6 +147,10 @@ export interface OwnerContentList {
   storage: OwnerStorageUsage | null;
 }
 
+export interface OwnerContentDownloadLink {
+  download_path: string;
+}
+
 export interface APIErrorResponse {
   error: {
     code: string;
