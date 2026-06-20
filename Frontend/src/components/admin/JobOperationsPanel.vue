@@ -42,7 +42,6 @@ watch(
 
 async function refreshJobs(silent = false) {
   nextCursor.value = "";
-  jobs.value = [];
   await loadJobs("", silent);
 }
 

@@ -217,12 +217,14 @@ async function refreshQueue() {
 
 async function refreshActiveTab(silent = false) {
   if (!isAuthorized.value) return;
-  if (activeTab.value === "content") {
+  const currentTab = activeTab.value;
+  if (tabLoading.value[currentTab]) return;
+  if (currentTab === "content") {
     await admin.refreshContentQueue({ silent });
     return;
   }
-  admin.setTabLoading(activeTab.value, true);
-  refreshNonces[activeTab.value] += 1;
+  admin.setTabLoading(currentTab, true);
+  refreshNonces[currentTab] += 1;
 }
 
 function startPolling() {

@@ -41,7 +41,6 @@ watch(
 
 async function refreshAudit(silent = false) {
   nextCursor.value = "";
-  entries.value = [];
   await loadAudit("", silent);
 }
 

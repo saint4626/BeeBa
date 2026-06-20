@@ -45,7 +45,6 @@ watch(
 
 async function refreshFiles(silent = false) {
   nextCursor.value = "";
-  files.value = [];
   await loadFiles("", silent);
 }
 
