@@ -70,6 +70,7 @@ const primaryImage = gallery[0];
 const primaryImageURL = primaryImage ? mediaURL(primaryImage) : "";
 const socialImage = primaryImage && primaryImageURL ? {
   url: primaryImageURL,
+  type: "image/webp",
   width: primaryImage.width,
   height: primaryImage.height,
   alt: primaryImage.alt_text || item?.title || "BeeBa Basis VR content asset",

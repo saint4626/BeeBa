@@ -87,6 +87,7 @@ const canonicalPath = `/ru/users/${username}`;
 const alternatePaths = buildLocaleAlternates(`/users/${username}`, canonicalPath);
 const socialImage = avatarURL ? {
   url: avatarURL,
+  type: "image/webp",
   width: 512,
   height: 512,
   alt: `${displayName} BeeBa profile avatar`,
