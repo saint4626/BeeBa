@@ -2,10 +2,12 @@
 import HomePage from "../../components/home/HomePage.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { ui } from "../../lib/i18n";
+import { buildLocaleAlternates } from "../../lib/seo/content-url";
 
 const locale = "ru";
+const alternatePaths = buildLocaleAlternates("/", "/ru");
 ---
 
-<BaseLayout title={ui[locale].home.title} description={ui[locale].home.description} canonicalPath="/ru" mainClass="main--flush-end">
+<BaseLayout title={ui[locale].home.title} description={ui[locale].home.description} canonicalPath="/ru" mainClass="main--flush-end" alternatePaths={alternatePaths}>
   <HomePage locale={locale} />
 </BaseLayout>

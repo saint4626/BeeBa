@@ -2,7 +2,8 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { getPublicAPIBaseURL } from "../../lib/api/client";
 import { publicMediaURL } from "../../lib/api/media-url";
-import { localizedPath, ui, type Locale } from "../../lib/i18n";
+import { ui, type Locale } from "../../lib/i18n";
+import { buildContentPath } from "../../lib/seo/content-url";
 import type { APIListResponse, CatalogTag, Category, CursorPagination, PublicContentItem } from "../../lib/api/types";
 
 type IconName = "worlds" | "avatars" | "props" | "prefabs" | "download" | "heart" | "comment";
@@ -117,7 +118,7 @@ function currentHref(overrides: Record<string, string>) {
 }
 
 function cardHref(item: PublicContentItem) {
-  return localizedPath(props.locale, `/content/${item.id}`);
+  return buildContentPath(props.locale, item);
 }
 
 function mediaURL(imageID?: string | null) {

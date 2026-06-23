@@ -34,6 +34,12 @@ beeba.org {
 
 	import security_headers
 
+	@canonicalTrailingSlash {
+		path_regexp canonicalTrailingSlash ^(.+)/+$
+		not path /api/* /healthz /readyz /openapi.yaml
+	}
+	redir @canonicalTrailingSlash {re.canonicalTrailingSlash.1} 301
+
 	handle /api/* {
 		reverse_proxy backend:8080
 	}

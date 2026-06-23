@@ -19,6 +19,13 @@ import { getPublicContent } from "../../../lib/api/content";
 import { publicMediaURL } from "../../../lib/api/media-url";
 import { BYTE_UNITS, HASH_DISPLAY } from "../../../lib/config/runtime";
 import { localizedPath, ui } from "../../../lib/i18n";
+import {
+  buildContentCanonicalPaths,
+  buildLocaleAlternates,
+  contentMetaDescription,
+  extractContentIDFromPathParam,
+} from "../../../lib/seo/content-url";
+import { breadcrumbJsonLd, contentJsonLd } from "../../../lib/seo/structured-data";
 import type { PublicContentDetail, PublicContentImage } from "../../../lib/api/types";
 
 export const prerender = false;
@@ -27,17 +34,19 @@ const { id } = Astro.params;
 const locale = "ru";
 const t = ui[locale];
 const publicAPIBaseURL = getPublicAPIBaseURL();
+const site = Astro.site ?? new URL("http://localhost:4321");
+const contentID = extractContentIDFromPathParam(id);
 
 let item: PublicContentDetail | null = null;
 let error = "";
 
-if (!id) {
+if (!contentID) {
   return Astro.redirect(localizedPath(locale, "/catalog"), 302);
 }
 
 try {
   const cookie = Astro.request.headers.get("cookie");
-  item = await getPublicContent(id, cookie ? { headers: { Cookie: cookie } } : undefined);
+  item = await getPublicContent(contentID, cookie ? { headers: { Cookie: cookie } } : undefined);
 } catch (caught) {
   if (caught instanceof Error && caught.message.toLowerCase().includes("not found")) {
     return Astro.redirect(localizedPath(locale, "/404"), 302);
@@ -46,16 +55,37 @@ try {
 }
 
 const pageTitle = item ? `${item.title} - BeeBa` : `${t.content.unavailableTitle} - BeeBa`;
-const description = item?.description || t.content.unavailableDescription;
-const canonicalPath = `/ru/content/${id}`;
+const description = item ? contentMetaDescription(item, locale) : t.content.unavailableDescription;
+const canonicalPaths = item ? buildContentCanonicalPaths(item) : null;
+const canonicalPath = canonicalPaths?.ru ?? localizedPath(locale, "/catalog");
+if (item && Astro.url.pathname !== canonicalPath) {
+  return Astro.redirect(canonicalPath, 301);
+}
 const downloadAPIPath = item ? `/content/${item.id}/download` : "";
 const downloadURL = downloadAPIPath ? `${publicAPIBaseURL}${downloadAPIPath}` : "";
 const absoluteDownloadURL = downloadAPIPath ? publicAPIURL(downloadAPIPath) : "";
 const loginHref = `${localizedPath(locale, "/login")}?next=${encodeURIComponent(Astro.url.pathname)}`;
 const gallery = item ? uniqueImages(item) : [];
 const primaryImage = gallery[0];
+const primaryImageURL = primaryImage ? mediaURL(primaryImage) : "";
+const socialImage = primaryImage && primaryImageURL ? {
+  url: primaryImageURL,
+  width: primaryImage.width,
+  height: primaryImage.height,
+  alt: primaryImage.alt_text || item?.title || "BeeBa Basis VR content asset",
+} : undefined;
 const publishedLabel = item?.published_at ? formatDate(item.published_at) : t.content.notPublished;
 const categoryInitials = item ? categoryName().slice(0, 2).toUpperCase() : "BB";
+const alternatePaths = canonicalPaths ? buildLocaleAlternates(canonicalPaths.en, canonicalPaths.ru) : [];
+const jsonLd = item ? [
+  breadcrumbJsonLd(site, [
+    { name: t.nav.home, path: "/ru" },
+    { name: t.nav.catalog, path: "/ru/catalog" },
+    { name: categoryName(), path: `/ru/catalog/${item.category.slug}` },
+    { name: item.title, path: canonicalPath },
+  ]),
+  contentJsonLd(site, item, locale, canonicalPath, primaryImageURL),
+] : [];
 
 function uniqueImages(content: PublicContentDetail): PublicContentImage[] {
   const seen = new Set<string>();
@@ -96,7 +126,16 @@ function categoryName() {
 }
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalPath={canonicalPath} mainClass="main--flush-end">
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  canonicalPath={canonicalPath}
+  mainClass="main--flush-end"
+  alternatePaths={alternatePaths}
+  ogType="article"
+  socialImage={socialImage}
+  jsonLd={jsonLd}
+>
   <div class="detail-shell">
     {error ? (
       <div class="catalog-empty" role="status">

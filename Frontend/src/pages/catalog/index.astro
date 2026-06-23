@@ -5,10 +5,21 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import { listCategories, listPublicContent, listTags } from "../../lib/api/content";
 import { PAGE_LIMITS } from "../../lib/config/runtime";
 import { ui } from "../../lib/i18n";
+import { buildLocaleAlternates } from "../../lib/seo/content-url";
+import { breadcrumbJsonLd } from "../../lib/seo/structured-data";
 import type { PublicContentItem, CursorPagination } from "../../lib/api/types";
 
 const locale = "en";
 const t = ui[locale];
+const site = Astro.site ?? new URL("http://localhost:4321");
+const canonicalPath = "/catalog";
+const alternatePaths = buildLocaleAlternates(canonicalPath, "/ru/catalog");
+const jsonLd = [
+  breadcrumbJsonLd(site, [
+    { name: t.nav.home, path: "/" },
+    { name: t.nav.catalog, path: canonicalPath },
+  ]),
+];
 const searchParams = Astro.url.searchParams;
 const query = searchParams.get("q")?.trim() ?? "";
 const activeTags = parseTags(searchParams.get("tags"));
@@ -61,7 +72,9 @@ function normalizeSort(raw: string | null): "newest" | "likes" | "downloads" {
 <BaseLayout
   title={t.catalog.title}
   description={t.catalog.description}
-  canonicalPath="/catalog"
+  canonicalPath={canonicalPath}
+  alternatePaths={alternatePaths}
+  jsonLd={jsonLd}
 >
   <CatalogHeaderActions
     slot="header-actions"

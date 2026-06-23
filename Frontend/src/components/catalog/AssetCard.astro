@@ -3,6 +3,7 @@ import { Blocks, Box, Download, Globe2, Heart, MessageCircle, UserRound } from "
 import LucideIcon from "../ui/LucideIcon.astro";
 import { publicMediaURL } from "../../lib/api/media-url";
 import { localizedPath, type Locale, ui } from "../../lib/i18n";
+import { buildContentPath } from "../../lib/seo/content-url";
 import type { PublicContentItem } from "../../lib/api/types";
 
 type AssetTone = "world" | "avatar" | "prop" | "prefab";
@@ -25,7 +26,7 @@ interface Props {
 const { item, placeholder, publicAPIBaseURL, locale = "en", priority = false } = Astro.props;
 const t = ui[locale].catalog;
 
-const href = item ? localizedPath(locale, `/content/${item.id}`) : localizedPath(locale, "/upload");
+const href = item ? buildContentPath(locale, item) : localizedPath(locale, "/upload");
 const title = item?.title ?? placeholder?.title ?? "Awaiting first upload";
 const category = item?.category.name ?? placeholder?.category ?? "Asset";
 const author = item?.author.display_name || item?.author.username || placeholder?.author || "Community slot";

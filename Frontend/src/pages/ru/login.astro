@@ -10,6 +10,7 @@ const redirectHref = next?.startsWith("/") && !next.startsWith("//") ? next : "/
   title="Вход - BeeBa"
   description="Войдите или создайте аккаунт BeeBa для загрузки и управления Basis / VR ассетами."
   canonicalPath="/ru/login"
+  robots="noindex, nofollow"
   mainClass="main--flush-end"
 >
   <AuthPage client:load locale="ru" homeHref="/ru" profileHref="/ru/profile" redirectHref={redirectHref} />

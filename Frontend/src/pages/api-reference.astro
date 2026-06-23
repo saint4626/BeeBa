@@ -1,5 +1,7 @@
 ---
+import { Buffer } from "node:buffer";
 import { ui } from "../lib/i18n";
+import { globalJsonLd, serializeJsonLd } from "../lib/seo/structured-data";
 
 const openApiUrl = "/openapi.yaml";
 const locale = "en";
@@ -8,6 +10,18 @@ const title = t.title;
 const description = t.description;
 const site = Astro.site ?? new URL("http://localhost:4321");
 const canonical = new URL("/api-reference", site);
+const ruCanonical = new URL("/ru/api-reference", site);
+const socialImage = new URL("/OG-Image.png", site);
+const socialImageAlt = "BeeBa Basis VR content catalog";
+const jsonLdPayloads = globalJsonLd(site).map(serializeJsonLd);
+for (const payload of jsonLdPayloads) {
+  Astro.csp?.insertScriptHash(await cspHash(payload));
+}
+
+async function cspHash(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return `sha256-${Buffer.from(digest).toString("base64")}` as const;
+}
 ---
 
 <!doctype html>
@@ -19,13 +33,25 @@ const canonical = new URL("/api-reference", site);
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical.href} />
+    <link rel="alternate" hreflang="en" href={canonical.href} />
+    <link rel="alternate" hreflang="ru" href={ruCanonical.href} />
+    <link rel="alternate" hreflang="x-default" href={canonical.href} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical.href} />
+    <meta property="og:image" content={socialImage.href} />
+    <meta property="og:image:secure_url" content={socialImage.href} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1731" />
+    <meta property="og:image:height" content="909" />
+    <meta property="og:image:alt" content={socialImageAlt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage.href} />
+    <meta name="twitter:image:alt" content={socialImageAlt} />
+    {jsonLdPayloads.map((payload) => <script type="application/ld+json" set:html={payload} />)}
     <style>
       :root {
         color-scheme: dark;

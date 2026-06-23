@@ -8,6 +8,8 @@ import { getPublicProfile, listCategories, listPublicContent, listTags } from ".
 import { publicMediaURL } from "../../../lib/api/media-url";
 import { PAGE_LIMITS } from "../../../lib/config/runtime";
 import { localizedPath, ui } from "../../../lib/i18n";
+import { buildLocaleAlternates } from "../../../lib/seo/content-url";
+import { breadcrumbJsonLd, profileJsonLd } from "../../../lib/seo/structured-data";
 import type { CatalogTag, Category, CursorPagination, PublicContentItem, PublicProfile } from "../../../lib/api/types";
 
 export const prerender = false;
@@ -16,6 +18,7 @@ const { username } = Astro.params;
 const locale = "ru";
 const t = ui[locale];
 const publicAPIBaseURL = getPublicAPIBaseURL();
+const site = Astro.site ?? new URL("http://localhost:4321");
 
 if (!username) {
   return Astro.redirect(localizedPath(locale, "/catalog"), 302);
@@ -80,11 +83,33 @@ const description = profile
   ? `${displayName} ${t.publicProfile.descriptionPrefix} ${profile.published_count} ${t.publicProfile.descriptionSuffix}`
   : t.publicProfile.fallbackDescription;
 const avatarURL = publicMediaURL(publicAPIBaseURL, profile?.avatar_image_id);
+const canonicalPath = `/ru/users/${username}`;
+const alternatePaths = buildLocaleAlternates(`/users/${username}`, canonicalPath);
+const socialImage = avatarURL ? {
+  url: avatarURL,
+  width: 512,
+  height: 512,
+  alt: `${displayName} BeeBa profile avatar`,
+} : undefined;
+const jsonLd = profile ? [
+  breadcrumbJsonLd(site, [
+    { name: t.nav.home, path: "/ru" },
+    { name: displayName, path: canonicalPath },
+  ]),
+  profileJsonLd(site, profile, canonicalPath, avatarURL),
+] : [];
 const joinedAt = profile ? new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(new Date(profile.created_at)) : "";
 const initials = (displayName || username).slice(0, 2).toUpperCase();
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalPath={`/ru/users/${username}`}>
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  canonicalPath={canonicalPath}
+  alternatePaths={alternatePaths}
+  socialImage={socialImage}
+  jsonLd={jsonLd}
+>
   {error ? (
     <div class="page-container">
       <div class="empty-state">

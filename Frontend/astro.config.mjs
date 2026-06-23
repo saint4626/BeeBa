@@ -8,6 +8,17 @@ const chunkSizeWarningLimitKiB = 650;
 const siteURL = process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321';
 const absoluteSiteURL = siteURL.endsWith('/') ? siteURL : `${siteURL}/`;
 const contentSitemapURL = new URL('content-sitemap.xml', absoluteSiteURL).href;
+const catalogCategorySitemapPaths = [
+  '/catalog/worlds',
+  '/catalog/avatars',
+  '/catalog/props',
+  '/catalog/prefabs',
+  '/ru/catalog/worlds',
+  '/ru/catalog/avatars',
+  '/ru/catalog/props',
+  '/ru/catalog/prefabs',
+];
+const sitemapCustomPages = catalogCategorySitemapPaths.map((path) => new URL(path, absoluteSiteURL).href);
 const siteHostname = new URL(absoluteSiteURL).hostname;
 const localHostnames = new Set(['localhost', '127.0.0.1', '::1']);
 const connectSrc = [
@@ -17,9 +28,11 @@ const connectSrc = [
 ].join(' ');
 const sitemapExcludedPathPrefixes = [
   '/admin',
+  '/404',
   '/content-sitemap.xml',
   '/confirm-email-change',
   '/confirm-password-change',
+  '/login',
   '/profile',
   '/upload',
   '/verify-email',
@@ -28,10 +41,22 @@ const isSitemapPageAllowed = (page) => {
   const path = new URL(page).pathname.replace(/^\/ru(?=\/|$)/, '') || '/';
   return !sitemapExcludedPathPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 };
+const addDefaultSitemapAlternate = (item) => {
+  const links = item.links ?? [];
+  const defaultLink = links.find((link) => link.lang === 'en');
+  if (!defaultLink || links.some((link) => link.lang === 'x-default')) {
+    return item;
+  }
+  return {
+    ...item,
+    links: [...links, { url: defaultLink.url, lang: 'x-default' }],
+  };
+};
 
 // https://astro.build/config
 export default defineConfig({
   site: siteURL,
+  trailingSlash: 'never',
   output: 'server',
   env: {
     schema: {
@@ -154,7 +179,9 @@ export default defineConfig({
   integrations: [
     vue({ appEntrypoint: '/src/vue-app' }),
     sitemap({
+      customPages: sitemapCustomPages,
       customSitemaps: [contentSitemapURL],
+      serialize: addDefaultSitemapAlternate,
       i18n: {
         defaultLocale: 'en',
         locales: {

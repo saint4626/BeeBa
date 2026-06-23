@@ -10,6 +10,7 @@ const t = ui[locale];
 <BaseLayout
   title={t.verifyEmail.title}
   description={t.verifyEmail.description}
+  robots="noindex, nofollow"
 >
   <section class="page-shell page-shell--narrow">
     <EmailVerificationApp client:load locale={locale} profileHref="/profile" />

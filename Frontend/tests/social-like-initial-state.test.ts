@@ -10,7 +10,7 @@ const ruPage = readFileSync("src/pages/ru/content/[id].astro", "utf8");
 for (const [label, source] of [["en", enPage], ["ru", ruPage]] as const) {
   assert.ok(source.includes("initialLiked={item.liked_by_me}"), `${label} content page should pass liked_by_me into SocialPanel`);
   assert.ok(source.includes('Astro.request.headers.get("cookie")'), `${label} content page should read request cookies`);
-  assert.ok(source.includes("getPublicContent(id, cookie ? { headers: { Cookie: cookie } } : undefined)"), `${label} content page should forward request cookies for viewer-aware detail`);
+  assert.ok(source.includes("getPublicContent(contentID, cookie ? { headers: { Cookie: cookie } } : undefined)"), `${label} content page should forward request cookies for viewer-aware detail`);
 }
 
 const types = readFileSync("src/lib/api/types.ts", "utf8");

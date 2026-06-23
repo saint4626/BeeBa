@@ -10,6 +10,7 @@ const redirectHref = next?.startsWith("/") && !next.startsWith("//") ? next : "/
   title="Login - BeeBa"
   description="Sign in or create a BeeBa account to upload and manage Basis / VR assets."
   canonicalPath="/login"
+  robots="noindex, nofollow"
   mainClass="main--flush-end"
 >
   <AuthPage client:load locale="en" homeHref="/" profileHref="/profile" redirectHref={redirectHref} />

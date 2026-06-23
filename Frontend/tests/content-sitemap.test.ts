@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { buildContentSitemapXML, collectContentSitemapItems } from "../src/lib/seo/content-sitemap.ts";
 import type { APIListResponse, PublicContentItem } from "../src/lib/api/types.ts";
 
-const first = contentItem("11111111-1111-1111-1111-111111111111", "2026-06-01T10:00:00.000Z");
-const second = contentItem("22222222-2222-2222-2222-222222222222", "2026-06-02T12:00:00.000Z");
+const first = contentItem("11111111-1111-4111-8111-111111111111", "2026-06-01T10:00:00.000Z");
+const second = contentItem("22222222-2222-4222-8222-222222222222", "2026-06-02T12:00:00.000Z");
 const calls: Array<{ limit: number; sort?: string; cursor?: string; include_nsfw?: boolean }> = [];
 
 const collected = await collectContentSitemapItems(async (filter) => {
@@ -27,10 +27,15 @@ const xml = buildContentSitemapXML(collected, new URL("https://beeba.org/"));
 assert.match(xml, /^<\?xml version="1.0" encoding="UTF-8"\?>/);
 assert.match(xml, /<urlset[^>]+xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9"/);
 assert.match(xml, /xmlns:xhtml="http:\/\/www\.w3\.org\/1999\/xhtml"/);
-assert.match(xml, /<loc>https:\/\/beeba\.org\/content\/11111111-1111-1111-1111-111111111111<\/loc>/);
-assert.match(xml, /<xhtml:link rel="alternate" hreflang="ru" href="https:\/\/beeba\.org\/ru\/content\/11111111-1111-1111-1111-111111111111"\/>/);
+assert.match(xml, /<loc>https:\/\/beeba\.org\/content\/asset-11111111-11111111-1111-4111-8111-111111111111<\/loc>/);
+assert.match(xml, /<xhtml:link rel="alternate" hreflang="ru" href="https:\/\/beeba\.org\/ru\/content\/asset-11111111-11111111-1111-4111-8111-111111111111"\/>/);
+assert.match(xml, /<xhtml:link rel="alternate" hreflang="x-default" href="https:\/\/beeba\.org\/content\/asset-11111111-11111111-1111-4111-8111-111111111111"\/>/);
 assert.match(xml, /<lastmod>2026-06-01T10:00:00.000Z<\/lastmod>/);
-assert.match(xml, /<loc>https:\/\/beeba\.org\/ru\/content\/22222222-2222-2222-2222-222222222222<\/loc>/);
+assert.match(xml, /<loc>https:\/\/beeba\.org\/ru\/content\/asset-22222222-22222222-2222-4222-8222-222222222222<\/loc>/);
+assert.match(xml, /<loc>https:\/\/beeba\.org\/users\/beeba<\/loc>/);
+assert.match(xml, /<loc>https:\/\/beeba\.org\/ru\/users\/beeba<\/loc>/);
+assert.match(xml, /<xhtml:link rel="alternate" hreflang="x-default" href="https:\/\/beeba\.org\/users\/beeba"\/>/);
+assert.doesNotMatch(xml, /\/login/);
 
 function contentItem(id: string, updatedAt: string): PublicContentItem {
   return {

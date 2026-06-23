@@ -1,18 +1,38 @@
 ---
+import { Buffer } from "node:buffer";
 import { Activity, BookOpen, ChevronDown, Grid2X2, Home, LogOut, Search, Settings, ShieldCheck, Upload, UserRound } from "lucide";
 import Dropdown from "../components/ui/Dropdown.astro";
 import LucideIcon from "../components/ui/LucideIcon.astro";
 import { getServerAPIBaseURL } from "../lib/api/client";
 import type { PublicUser } from "../lib/api/types";
 import { alternateLocale, localizedPath, normalizeLocale, ui } from "../lib/i18n";
+import { globalJsonLd, serializeJsonLd, type JsonLdNode } from "../lib/seo/structured-data";
 import { PUBLIC_STATUS_URL } from "astro:env/client";
 import "../styles/global.css";
+
+interface AlternatePath {
+  hreflang: "en" | "ru" | "x-default";
+  path: string;
+}
+
+interface SocialImage {
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+  type?: string;
+}
 
 interface Props {
   title: string;
   description: string;
   canonicalPath?: string;
   mainClass?: string;
+  robots?: string;
+  alternatePaths?: AlternatePath[];
+  socialImage?: SocialImage;
+  ogType?: string;
+  jsonLd?: JsonLdNode[];
 }
 
 const {
@@ -20,12 +40,32 @@ const {
   description,
   canonicalPath = Astro.url.pathname,
   mainClass = "",
+  robots,
+  alternatePaths = [],
+  socialImage,
+  ogType = "website",
+  jsonLd = [],
 } = Astro.props;
 
 const site = Astro.site ?? new URL("http://localhost:4321");
 const canonical = new URL(canonicalPath, site);
 const brandLogo256 = "/brand/beeba-logo-256.webp";
-const socialImage = new URL("/OG-Image.png", site);
+const defaultSocialImage = new URL("/OG-Image.png", site);
+const resolvedSocialImage = {
+  href: new URL(socialImage?.url ?? defaultSocialImage.href, site).href,
+  type: socialImage?.type ?? "image/png",
+  width: socialImage?.width ?? (socialImage ? undefined : 1731),
+  height: socialImage?.height ?? (socialImage ? undefined : 909),
+  alt: socialImage?.alt ?? "BeeBa Basis VR content catalog",
+};
+const resolvedAlternatePaths = alternatePaths.map((alternate) => ({
+  hreflang: alternate.hreflang,
+  href: new URL(alternate.path, site).href,
+}));
+const jsonLdPayloads = (robots?.includes("noindex") ? jsonLd : [...globalJsonLd(site), ...jsonLd]).map(serializeJsonLd);
+for (const payload of jsonLdPayloads) {
+  Astro.csp?.insertScriptHash(await cspHash(payload));
+}
 const runtimeEnv = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env;
 const statusURL = runtimeEnv?.PUBLIC_STATUS_URL ?? PUBLIC_STATUS_URL;
 const locale = normalizeLocale(Astro.currentLocale);
@@ -101,6 +141,11 @@ const authNavUser = authUser
       avatar_image_id: authUser.avatar_image_id,
     })
   : "";
+
+async function cspHash(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return `sha256-${Buffer.from(digest).toString("base64")}` as const;
+}
 ---
 
 <!doctype html>
@@ -118,23 +163,26 @@ const authNavUser = authUser
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {robots && <meta name="robots" content={robots} />}
     <link rel="canonical" href={canonical.href} />
+    {resolvedAlternatePaths.map((alternate) => <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />)}
     <link rel="sitemap" href="/sitemap-index.xml" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonical.href} />
-    <meta property="og:image" content={socialImage.href} />
-    <meta property="og:image:secure_url" content={socialImage.href} />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1731" />
-    <meta property="og:image:height" content="909" />
-    <meta property="og:image:alt" content="BeeBa Basis VR content catalog" />
+    <meta property="og:image" content={resolvedSocialImage.href} />
+    <meta property="og:image:secure_url" content={resolvedSocialImage.href} />
+    <meta property="og:image:type" content={resolvedSocialImage.type} />
+    {resolvedSocialImage.width && <meta property="og:image:width" content={String(resolvedSocialImage.width)} />}
+    {resolvedSocialImage.height && <meta property="og:image:height" content={String(resolvedSocialImage.height)} />}
+    <meta property="og:image:alt" content={resolvedSocialImage.alt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={socialImage.href} />
-    <meta name="twitter:image:alt" content="BeeBa Basis VR content catalog" />
+    <meta name="twitter:image" content={resolvedSocialImage.href} />
+    <meta name="twitter:image:alt" content={resolvedSocialImage.alt} />
+    {jsonLdPayloads.map((payload) => <script type="application/ld+json" set:html={payload} />)}
   </head>
   <body>
     <div class="page-progress" aria-hidden="true" data-page-progress>

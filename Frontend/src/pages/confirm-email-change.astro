@@ -11,6 +11,7 @@ const t = ui[locale];
   title={t.accountConfirm.emailTitle}
   description={t.accountConfirm.emailDescription}
   canonicalPath="/confirm-email-change"
+  robots="noindex, nofollow"
 >
   <section class="page-shell page-shell--narrow">
     <AccountActionConfirmationApp client:load kind="email" locale={locale} profileHref="/profile" loginHref="/login" />
