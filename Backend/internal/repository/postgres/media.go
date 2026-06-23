@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -177,6 +178,125 @@ RETURNING id::text, alt_text, width, height, file_size, file_hash_sha256, mime_t
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return media.UploadedImage{}, fmt.Errorf("commit content image upload: %w", err)
+	}
+	return image, nil
+}
+
+func (r MediaRepository) GetContentPreviewFallbackTarget(ctx context.Context, contentID string) (media.ContentPreviewFallbackTarget, error) {
+	var target media.ContentPreviewFallbackTarget
+	err := r.db.QueryRow(ctx, `
+SELECT
+  item.id::text,
+  item.author_id::text,
+  item.title,
+  EXISTS (
+    SELECT 1
+    FROM content_images image
+    WHERE image.content_id = item.id
+      AND image.deleted_at IS NULL
+  ) AS has_images
+FROM content_items item
+WHERE item.id = $1::uuid
+  AND item.deleted_at IS NULL
+  AND item.status <> 'deleted'`, contentID).Scan(
+		&target.ContentID,
+		&target.OwnerUserID,
+		&target.Title,
+		&target.HasImages,
+	)
+	if err != nil {
+		return media.ContentPreviewFallbackTarget{}, fmt.Errorf("load content preview fallback target: %w", err)
+	}
+	return target, nil
+}
+
+func (r MediaRepository) CreateContentImageFallback(ctx context.Context, input media.ImageUploadInput) (media.UploadedImage, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return media.UploadedImage{}, fmt.Errorf("begin content image fallback: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var contentTitle string
+	err = tx.QueryRow(ctx, `
+SELECT title
+FROM content_items
+WHERE id = $1::uuid
+  AND author_id = $2::uuid
+  AND deleted_at IS NULL
+  AND status <> 'deleted'
+FOR UPDATE`, input.ContentID, input.OwnerUserID).Scan(&contentTitle)
+	if err != nil {
+		return media.UploadedImage{}, fmt.Errorf("check content fallback ownership: %w", err)
+	}
+
+	var existingImageID string
+	err = tx.QueryRow(ctx, `
+SELECT id::text
+FROM content_images
+WHERE content_id = $1::uuid
+  AND deleted_at IS NULL
+LIMIT 1
+FOR UPDATE`, input.ContentID).Scan(&existingImageID)
+	if err == nil {
+		return media.UploadedImage{}, media.ErrContentImageFallbackExists
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return media.UploadedImage{}, fmt.Errorf("check content image fallback existence: %w", err)
+	}
+
+	if err := ensureOwnerStorageQuota(ctx, tx, input.OwnerUserID, input.FileSize, input.StorageQuotaBytes); err != nil {
+		return media.UploadedImage{}, err
+	}
+	input.AltText = contentImageAltText(input.AltText, contentTitle)
+
+	var image media.UploadedImage
+	image.Kind = "content_image"
+	image.ContentID = &input.ContentID
+	err = tx.QueryRow(ctx, `
+INSERT INTO content_images (
+  content_id, bucket, storage_key, original_filename, alt_text, width, height,
+  file_size, file_hash_sha256, mime_type_detected, sort_order, is_primary,
+  processing_status, uploaded_by
+)
+VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, true, 'pending', $11::uuid)
+RETURNING id::text, alt_text, width, height, file_size, file_hash_sha256, mime_type_detected, processing_status, is_primary, sort_order, created_at`,
+		input.ContentID,
+		input.Bucket,
+		input.StorageKey,
+		input.OriginalFilename,
+		input.AltText,
+		input.Width,
+		input.Height,
+		input.FileSize,
+		input.FileHashSHA256,
+		input.MimeTypeDetected,
+		input.OwnerUserID,
+	).Scan(
+		&image.ID,
+		&image.AltText,
+		&image.Width,
+		&image.Height,
+		&image.FileSize,
+		&image.FileHashSHA256,
+		&image.MimeTypeDetected,
+		&image.ProcessingStatus,
+		&image.IsPrimary,
+		&image.SortOrder,
+		&image.CreatedAt,
+	)
+	if err != nil {
+		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
+			return media.UploadedImage{}, media.ErrContentImageFallbackExists
+		}
+		return media.UploadedImage{}, fmt.Errorf("insert content image fallback: %w", err)
+	}
+
+	if err := enqueueImageJob(ctx, tx, "content_image", image.ID); err != nil {
+		return media.UploadedImage{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return media.UploadedImage{}, fmt.Errorf("commit content image fallback: %w", err)
 	}
 	return image, nil
 }

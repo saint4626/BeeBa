@@ -51,6 +51,7 @@ type Connector struct {
 	UniqueVersion          string      `json:"UniqueVersion"`
 	BasisBundleDescription Description `json:"BasisBundleDescription"`
 	BasisBundleGenerated   []Generated `json:"BasisBundleGenerated"`
+	ImageBase64            string      `json:"ImageBase64"`
 	DateOfCreation         string      `json:"DateOfCreation"`
 	MetaData               Metadata    `json:"MetaData"`
 }
@@ -60,6 +61,7 @@ func (connector *Connector) UnmarshalJSON(data []byte) error {
 		UniqueVersion          string          `json:"UniqueVersion"`
 		BasisBundleDescription Description     `json:"BasisBundleDescription"`
 		BasisBundleGenerated   json.RawMessage `json:"BasisBundleGenerated"`
+		ImageBase64            string          `json:"ImageBase64"`
 		DateOfCreation         string          `json:"DateOfCreation"`
 		MetaData               Metadata        `json:"MetaData"`
 	}
@@ -73,6 +75,7 @@ func (connector *Connector) UnmarshalJSON(data []byte) error {
 	connector.UniqueVersion = raw.UniqueVersion
 	connector.BasisBundleDescription = raw.BasisBundleDescription
 	connector.BasisBundleGenerated = generated
+	connector.ImageBase64 = raw.ImageBase64
 	connector.DateOfCreation = raw.DateOfCreation
 	connector.MetaData = raw.MetaData
 	return nil

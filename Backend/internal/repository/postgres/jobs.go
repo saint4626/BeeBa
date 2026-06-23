@@ -368,6 +368,60 @@ LIMIT 1`).Scan(
 	return file, nil
 }
 
+func (r JobRepository) ListEmbeddedPreviewBackfillCandidates(ctx context.Context, limit int) ([]jobs.ContentFileForScan, error) {
+	rows, err := r.db.Query(ctx, `
+SELECT
+  cf.id::text,
+  cf.content_id::text,
+  cf.bucket,
+  cf.storage_key,
+  cf.file_size,
+  cf.file_hash_sha256,
+  cf.scan_status,
+  COALESCE(cf.unlock_password_ciphertext, '')
+FROM content_items ci
+JOIN content_files cf ON cf.content_id = ci.id
+WHERE ci.status = 'published'
+  AND ci.deleted_at IS NULL
+  AND ci.hidden_at IS NULL
+  AND cf.scan_status = 'clean'
+  AND COALESCE(cf.unlock_password_ciphertext, '') <> ''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM content_images image
+    WHERE image.content_id = ci.id
+      AND image.deleted_at IS NULL
+  )
+ORDER BY ci.published_at DESC NULLS LAST, ci.updated_at DESC, ci.id DESC
+LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query embedded preview backfill candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]jobs.ContentFileForScan, 0)
+	for rows.Next() {
+		var file jobs.ContentFileForScan
+		if err := rows.Scan(
+			&file.FileID,
+			&file.ContentID,
+			&file.Bucket,
+			&file.StorageKey,
+			&file.FileSize,
+			&file.FileHashSHA256,
+			&file.ScanStatus,
+			&file.UnlockPasswordCiphertext,
+		); err != nil {
+			return nil, fmt.Errorf("scan embedded preview backfill candidate: %w", err)
+		}
+		candidates = append(candidates, file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read embedded preview backfill candidates: %w", err)
+	}
+	return candidates, nil
+}
+
 func (r JobRepository) CompleteFileScan(ctx context.Context, jobID string, fileID string, contentID string, scanStatus string, contentStatus string, result map[string]any) error {
 	payload, err := json.Marshal(result)
 	if err != nil {

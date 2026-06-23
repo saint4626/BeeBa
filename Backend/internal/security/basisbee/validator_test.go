@@ -91,6 +91,7 @@ func TestValidateRemoteSDKBEEWithPassword(t *testing.T) {
 				EndByte:         int64(len(section)),
 			},
 		},
+		ImageBase64: "embedded-preview",
 	})
 	if err != nil {
 		t.Fatalf("marshal connector: %v", err)
@@ -112,6 +113,9 @@ func TestValidateRemoteSDKBEEWithPassword(t *testing.T) {
 	}
 	if connector.UniqueVersion != "version-1" {
 		t.Fatalf("unique version = %q", connector.UniqueVersion)
+	}
+	if connector.ImageBase64 != "embedded-preview" {
+		t.Fatalf("image base64 = %q", connector.ImageBase64)
 	}
 }
 

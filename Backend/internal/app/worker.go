@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,10 +12,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"beeba.org/internal/config"
+	contentdomain "beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/jobs"
+	mediadomain "beeba.org/internal/domain/media"
 	emailclient "beeba.org/internal/email"
 	"beeba.org/internal/repository/postgres"
 	searchclient "beeba.org/internal/search/meilisearch"
@@ -24,6 +28,7 @@ import (
 	"beeba.org/internal/security/secretbox"
 	miniostorage "beeba.org/internal/storage/minio"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -53,6 +58,26 @@ type objectReader interface {
 	PutObject(ctx context.Context, bucket string, key string, reader io.Reader, size int64, contentType string) error
 	RemoveObject(ctx context.Context, bucket string, key string) error
 }
+
+type EmbeddedPreviewBackfillReport struct {
+	Scanned           int
+	Created           int
+	SkippedExisting   int
+	SkippedNoPreview  int
+	SkippedQuota      int
+	Failed            int
+	BackfillLimitUsed int
+}
+
+type embeddedPreviewFallbackOutcome string
+
+const (
+	embeddedPreviewFallbackCreated          embeddedPreviewFallbackOutcome = "created"
+	embeddedPreviewFallbackSkippedExisting  embeddedPreviewFallbackOutcome = "skipped_existing"
+	embeddedPreviewFallbackSkippedNoPreview embeddedPreviewFallbackOutcome = "skipped_no_preview"
+	embeddedPreviewFallbackSkippedQuota     embeddedPreviewFallbackOutcome = "skipped_quota"
+	embeddedPreviewFallbackFailed           embeddedPreviewFallbackOutcome = "failed"
+)
 
 func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worker, error) {
 	db, err := postgres.Open(ctx, cfg)
@@ -116,9 +141,15 @@ func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worke
 	}, nil
 }
 
+func (w *Worker) Close() {
+	if w.db != nil {
+		w.db.Close()
+	}
+}
+
 func (w *Worker) Run(ctx context.Context) error {
 	w.log.Info("worker_starting", slog.String("worker_id", w.id))
-	defer w.db.Close()
+	defer w.Close()
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -135,6 +166,43 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (w *Worker) BackfillEmbeddedPreviewFallbacks(ctx context.Context, limit int) (EmbeddedPreviewBackfillReport, error) {
+	limit = normalizeEmbeddedPreviewBackfillLimit(limit)
+	report := EmbeddedPreviewBackfillReport{BackfillLimitUsed: limit}
+
+	candidates, err := w.jobs.ListEmbeddedPreviewBackfillCandidates(ctx, limit)
+	if err != nil {
+		return report, err
+	}
+	report.Scanned = len(candidates)
+
+	for _, file := range candidates {
+		switch w.backfillEmbeddedPreviewFallback(ctx, file) {
+		case embeddedPreviewFallbackCreated:
+			report.Created++
+		case embeddedPreviewFallbackSkippedExisting:
+			report.SkippedExisting++
+		case embeddedPreviewFallbackSkippedNoPreview:
+			report.SkippedNoPreview++
+		case embeddedPreviewFallbackSkippedQuota:
+			report.SkippedQuota++
+		default:
+			report.Failed++
+		}
+	}
+	return report, nil
+}
+
+func normalizeEmbeddedPreviewBackfillLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > 1000 {
+		return 1000
+	}
+	return limit
 }
 
 func (w *Worker) processOnce(ctx context.Context) error {
@@ -393,6 +461,7 @@ func (w *Worker) processFileScan(ctx context.Context, job jobs.Job) error {
 	if err := w.autoPublishCleanFile(ctx, job.ID, file, scanResult); err != nil {
 		return err
 	}
+	w.createEmbeddedPreviewFallback(ctx, file, connector)
 
 	w.log.Info("worker_file_scan_completed",
 		slog.String("job_id", job.ID),
@@ -401,6 +470,173 @@ func (w *Worker) processFileScan(ctx context.Context, job jobs.Job) error {
 		slog.String("content_status", "published"),
 	)
 	return nil
+}
+
+func (w *Worker) backfillEmbeddedPreviewFallback(ctx context.Context, file jobs.ContentFileForScan) embeddedPreviewFallbackOutcome {
+	object, err := w.objects.GetObject(ctx, file.Bucket, file.StorageKey)
+	if err != nil {
+		w.log.Warn("embedded_preview_backfill_object_open_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	unlockPassword, err := w.secrets.DecryptString(file.UnlockPasswordCiphertext)
+	if err != nil {
+		_ = object.Close()
+		w.log.Warn("embedded_preview_backfill_password_decrypt_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	_, connector, validateErr := basisbee.ValidateRemoteSDKBEEWithPassword(object, unlockPassword, w.cfg.MaxUploadBytes)
+	closeErr := object.Close()
+	if validateErr != nil {
+		w.log.Warn("embedded_preview_backfill_basis_validate_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", validateErr.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+	if closeErr != nil {
+		w.log.Warn("embedded_preview_backfill_object_close_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", closeErr.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	return w.createEmbeddedPreviewFallback(ctx, file, connector)
+}
+
+func (w *Worker) createEmbeddedPreviewFallback(ctx context.Context, file jobs.ContentFileForScan, connector basisbee.Connector) embeddedPreviewFallbackOutcome {
+	if strings.TrimSpace(connector.ImageBase64) == "" {
+		return embeddedPreviewFallbackSkippedNoPreview
+	}
+
+	target, err := w.media.GetContentPreviewFallbackTarget(ctx, file.ContentID)
+	if err != nil {
+		w.log.Warn("embedded_preview_target_load_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+	if target.HasImages {
+		return embeddedPreviewFallbackSkippedExisting
+	}
+
+	metadata, err := readEmbeddedPreviewImage(connector.ImageBase64, w.cfg.MaxImageBytes)
+	if err != nil {
+		w.log.Warn("embedded_preview_decode_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	if err := w.objects.EnsureBucket(ctx, w.cfg.PreviewBucket); err != nil {
+		w.log.Warn("embedded_preview_bucket_prepare_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	pendingImageID := uuid.NewString()
+	storageKey := fmt.Sprintf("pending/content/%s/images/%s%s", file.ContentID, pendingImageID, embeddedPreviewExtension(metadata.MIMEType))
+	if err := w.objects.PutObject(ctx, w.cfg.PreviewBucket, storageKey, bytes.NewReader(metadata.Bytes), metadata.DecodedSize, metadata.MIMEType); err != nil {
+		w.log.Warn("embedded_preview_store_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	uploaded, err := w.media.CreateContentImageFallback(ctx, mediadomain.ImageUploadInput{
+		OwnerUserID:       target.OwnerUserID,
+		ContentID:         file.ContentID,
+		Bucket:            w.cfg.PreviewBucket,
+		StorageKey:        storageKey,
+		OriginalFilename:  "basis-embedded-preview.png",
+		AltText:           target.Title,
+		Width:             metadata.Width,
+		Height:            metadata.Height,
+		FileSize:          metadata.DecodedSize,
+		FileHashSHA256:    metadata.SHA256,
+		MimeTypeDetected:  metadata.MIMEType,
+		IsPrimary:         true,
+		StorageQuotaBytes: w.cfg.UserStorageQuotaBytes,
+	})
+	if errors.Is(err, mediadomain.ErrContentImageFallbackExists) {
+		_ = w.objects.RemoveObject(ctx, w.cfg.PreviewBucket, storageKey)
+		return embeddedPreviewFallbackSkippedExisting
+	}
+	if errors.Is(err, contentdomain.ErrStorageQuotaExceeded) {
+		_ = w.objects.RemoveObject(ctx, w.cfg.PreviewBucket, storageKey)
+		w.log.Warn("embedded_preview_storage_quota_exceeded",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.Int64("image_size", metadata.DecodedSize),
+		)
+		return embeddedPreviewFallbackSkippedQuota
+	}
+	if err != nil {
+		_ = w.objects.RemoveObject(ctx, w.cfg.PreviewBucket, storageKey)
+		w.log.Warn("embedded_preview_metadata_store_failed",
+			slog.String("content_id", file.ContentID),
+			slog.String("file_id", file.FileID),
+			slog.String("error", err.Error()),
+		)
+		return embeddedPreviewFallbackFailed
+	}
+
+	w.log.Info("embedded_preview_fallback_created",
+		slog.String("content_id", file.ContentID),
+		slog.String("file_id", file.FileID),
+		slog.String("image_id", uploaded.ID),
+	)
+	return embeddedPreviewFallbackCreated
+}
+
+func readEmbeddedPreviewImage(raw string, maxBytes int64) (images.Metadata, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return images.Metadata{}, fmt.Errorf("embedded preview is empty")
+	}
+	if strings.HasPrefix(strings.ToLower(value), "data:") {
+		comma := strings.IndexByte(value, ',')
+		if comma < 0 {
+			return images.Metadata{}, fmt.Errorf("embedded preview data URL is invalid")
+		}
+		value = value[comma+1:]
+	}
+	value = strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, value)
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(value))
+	return images.ReadAndValidate(decoder, maxBytes)
+}
+
+func embeddedPreviewExtension(mimeType string) string {
+	if mimeType == images.MIMEJPEG {
+		return ".jpg"
+	}
+	return ".png"
 }
 
 func (w *Worker) autoPublishCleanFile(ctx context.Context, jobID string, file jobs.ContentFileForScan, scanResult map[string]any) error {

@@ -1,6 +1,18 @@
 package media
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrContentImageFallbackExists = errors.New("content image fallback already exists")
+
+type ContentPreviewFallbackTarget struct {
+	ContentID   string
+	OwnerUserID string
+	Title       string
+	HasImages   bool
+}
 
 type ImageUploadInput struct {
 	OwnerUserID       string
