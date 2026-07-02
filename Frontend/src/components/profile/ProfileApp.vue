@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from "vue";
-import { Boxes, ShieldCheck, UserRound } from "lucide";
+import { Boxes, RadioTower, ShieldCheck, UserRound } from "lucide";
 import AccountSettingsPanel from "./AccountSettingsPanel.vue";
 import OwnerContentDrawer from "./OwnerContentDrawer.vue";
 import OwnerContentPanel from "./OwnerContentPanel.vue";
+import OwnerServersPanel from "./OwnerServersPanel.vue";
 import SecurityPanel from "./SecurityPanel.vue";
 import { readAuthSession } from "../../lib/auth/session";
 import { ui, type Locale } from "../../lib/i18n";
@@ -18,7 +19,7 @@ const props = defineProps<{
   locale?: Locale;
 }>();
 
-type ProfileTabID = "profile" | "content" | "security";
+type ProfileTabID = "profile" | "content" | "servers" | "security";
 type IconNode = Array<[string, Record<string, string>]>;
 
 const Icon = defineComponent({
@@ -71,6 +72,13 @@ const tabs = computed(() => [
     icon: Boxes as IconNode,
   },
   {
+    id: "servers" as const,
+    label: t.tabServers,
+    description: t.tabServersDescription,
+    metric: `${owner.serverItems.length} ${t.serversSuffix}`,
+    icon: RadioTower as IconNode,
+  },
+  {
     id: "security" as const,
     label: t.tabSecurity,
     description: t.tabSecurityDescription,
@@ -83,7 +91,20 @@ function selectAdjacentTab(direction: 1 | -1) {
   const tabIDs = tabs.value.map((tab) => tab.id);
   const currentIndex = tabIDs.indexOf(activeTab.value);
   const nextIndex = (currentIndex + direction + tabIDs.length) % tabIDs.length;
-  activeTab.value = tabIDs[nextIndex];
+  setActiveTab(tabIDs[nextIndex]);
+}
+
+function setActiveTab(tabID: ProfileTabID) {
+  activeTab.value = tabID;
+  if (typeof window !== "undefined") {
+    window.history.replaceState(null, "", `#${tabID}`);
+  }
+}
+
+function hashTab(): ProfileTabID | null {
+  if (typeof window === "undefined") return null;
+  const value = window.location.hash.replace(/^#/, "");
+  return tabs.value.some((tab) => tab.id === value) ? value as ProfileTabID : null;
 }
 
 onMounted(() => {
@@ -93,6 +114,7 @@ onMounted(() => {
     return;
   }
   owner.bootstrapUser(props.initialUser);
+  activeTab.value = hashTab() ?? activeTab.value;
   ready.value = true;
 });
 
@@ -146,7 +168,7 @@ watch(
         :aria-selected="activeTab === tab.id"
         :aria-controls="`profile-panel-${tab.id}`"
         :tabindex="activeTab === tab.id ? 0 : -1"
-        @click="activeTab = tab.id"
+        @click="setActiveTab(tab.id)"
         @keydown.left.prevent="selectAdjacentTab(-1)"
         @keydown.up.prevent="selectAdjacentTab(-1)"
         @keydown.right.prevent="selectAdjacentTab(1)"
@@ -174,6 +196,9 @@ watch(
       <div v-else-if="activeTab === 'content'" class="profile-tab-panel__grid">
         <OwnerContentPanel :locale="locale" />
         <OwnerContentDrawer :locale="locale" />
+      </div>
+      <div v-else-if="activeTab === 'servers'" class="profile-tab-panel__grid">
+        <OwnerServersPanel :locale="locale" />
       </div>
       <div v-else class="profile-tab-panel__grid">
         <SecurityPanel :locale="locale" />

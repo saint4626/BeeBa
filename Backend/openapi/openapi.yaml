@@ -97,6 +97,108 @@ paths:
                       $ref: "#/components/schemas/Tag"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/servers:
+    get:
+      summary: List published public Basis servers
+      operationId: listServers
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: tags
+          in: query
+          description: Comma-separated tag slugs. Results match any provided tag.
+          schema:
+            type: string
+            maxLength: 500
+        - name: region
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: language
+          in: query
+          description: Optional server language tag, for example `en`, `ru`, `pt-br`, or `multi`.
+          schema:
+            type: string
+            maxLength: 32
+            pattern: "^(multi|[a-z]{2,3}(-[a-z0-9]{2,8})*)$"
+        - name: online
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: include_nsfw
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - newest
+              - players
+              - updated
+            default: players
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public server catalog page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PublicServerItem"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/servers/{server_id}:
+    get:
+      summary: Get a published public or unlisted Basis server
+      operationId: getPublicServer
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Public server detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicServerDetail"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/content:
     get:
       summary: List published public content
@@ -896,6 +998,196 @@ paths:
       responses:
         "204":
           description: Owned content was soft-deleted and removed from public search if needed.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/servers:
+    get:
+      summary: List Basis servers owned by the authenticated user
+      operationId: listOwnedServers
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - draft
+              - pending_verification
+              - pending_moderation
+              - published
+              - offline
+              - failed
+              - hidden
+              - deleted
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owned server page, including private metadata and verification state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OwnerServerItem"
+                  pagination:
+                    $ref: "#/components/schemas/CursorPagination"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a Basis server to the owner directory
+      operationId: createOwnedServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerServerCreateRequest"
+      responses:
+        "201":
+          description: Server stored and availability check queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerServerItem"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/servers/probe:
+    post:
+      summary: Probe a Basis server connection string before saving it
+      operationId: probeOwnedServerConnection
+      description: Authenticated helper for the owner form. It runs the same Basis server-info UDP query used by background checks, returns safe live metadata, and does not create or publish a server.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerServerProbeRequest"
+      responses:
+        "200":
+          description: Server responded to the Basis server-info query.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerServerProbeResult"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/servers/{server_id}:
+    patch:
+      summary: Update a Basis server owned by the authenticated user
+      operationId: updateOwnedServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerServerUpdateRequest"
+      responses:
+        "200":
+          description: Updated owned server. Endpoint changes queue a new availability check before publication.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerServerItem"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Soft-delete a Basis server owned by the authenticated user
+      operationId: deleteOwnedServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Owned server was soft-deleted and removed from public catalog.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/me/servers/{server_id}/verify:
+    post:
+      summary: Queue an availability check for an owned Basis server
+      operationId: verifyOwnedServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Availability check queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OwnerServerItem"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/me/avatar:
@@ -1822,6 +2114,74 @@ paths:
                     $ref: "#/components/schemas/ModeratedContent"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/admin/servers/{server_id}/hide:
+    post:
+      summary: Hide a published Basis server from the public catalog
+      operationId: hideServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationReviewRequest"
+      responses:
+        "200":
+          description: Server hidden and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicServerDetail"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/servers/{server_id}/restore:
+    post:
+      summary: Restore a hidden Basis server to the public catalog
+      operationId: restoreServer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationOptionalReasonRequest"
+      responses:
+        "200":
+          description: Server restored and audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PublicServerDetail"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/admin/comments/{comment_id}/approve:
     post:
       summary: Approve a pending comment and publish it
@@ -2145,6 +2505,7 @@ paths:
               - file_scan_queue
               - image_processing_queue
               - search_index_queue
+              - server_check_queue
               - email_queue
               - moderation_queue
               - cleanup_queue
@@ -2681,6 +3042,380 @@ components:
           maxLength: 80
         is_system:
           type: boolean
+    ServerTag:
+      type: object
+      required:
+        - slug
+        - name
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+    ServerOwner:
+      type: object
+      required:
+        - id
+        - username
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type:
+            - string
+            - "null"
+        avatar_image_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+    ServerCheckState:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - online
+            - offline
+            - failed
+        online_players:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        max_players:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        protocol_version:
+          type:
+            - integer
+            - "null"
+        server_name:
+          type:
+            - string
+            - "null"
+        motd:
+          type:
+            - string
+            - "null"
+        round_trip_ms:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        last_checked_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        last_error:
+          type:
+            - string
+            - "null"
+    PublicServerItem:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - description
+        - visibility
+        - status
+        - host
+        - port
+        - has_password
+        - connection_string
+        - region
+        - language
+        - nsfw
+        - tags
+        - owner
+        - check
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum:
+            - public
+            - unlisted
+        status:
+          type: string
+          enum:
+            - published
+            - offline
+        host:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        has_password:
+          type: boolean
+        connection_string:
+          type: string
+          description: Basis client connection string. May include `#password` when the owner chose to publish a password-protected server by link/catalog.
+        region:
+          type: string
+        language:
+          type: string
+          description: Server language tag, for example `en`, `ru`, `pt-br`, or `multi`. Empty when unspecified.
+          maxLength: 32
+          pattern: "^(multi|[a-z]{2,3}(-[a-z0-9]{2,8})*)$"
+        nsfw:
+          type: boolean
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServerTag"
+        owner:
+          $ref: "#/components/schemas/ServerOwner"
+        check:
+          $ref: "#/components/schemas/ServerCheckState"
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PublicServerDetail:
+      allOf:
+        - $ref: "#/components/schemas/PublicServerItem"
+        - type: object
+          required:
+            - rules
+          properties:
+            rules:
+              type: string
+            discord_url:
+              type:
+                - string
+                - "null"
+              format: uri
+            website_url:
+              type:
+                - string
+                - "null"
+              format: uri
+    OwnerServerItem:
+      allOf:
+        - $ref: "#/components/schemas/PublicServerDetail"
+        - type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - draft
+                - pending_verification
+                - pending_moderation
+                - published
+                - offline
+                - failed
+                - hidden
+                - deleted
+            password:
+              type:
+                - string
+                - "null"
+              description: Basis server password visible only to the authenticated owner.
+    OwnerServerCreateRequest:
+      type: object
+      required:
+        - name
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 1000
+        connection_string:
+          type: string
+          maxLength: 500
+          description: Basis client connection string, e.g. `example.org:4296#password`.
+        host:
+          type: string
+          maxLength: 253
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        password:
+          type: string
+          maxLength: 200
+        visibility:
+          type: string
+          enum:
+            - public
+            - unlisted
+          default: public
+        region:
+          type: string
+          maxLength: 64
+        language:
+          type: string
+          description: Server language tag, for example `en`, `ru`, `pt-br`, or `multi`.
+          maxLength: 32
+          pattern: "^(multi|[a-z]{2,3}(-[a-z0-9]{2,8})*)$"
+        nsfw:
+          type: boolean
+          default: false
+        tags:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        rules:
+          type: string
+          maxLength: 1000
+        discord_url:
+          type: string
+          format: uri
+        website_url:
+          type: string
+          format: uri
+    OwnerServerProbeRequest:
+      type: object
+      required:
+        - connection_string
+      additionalProperties: false
+      properties:
+        connection_string:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Basis client connection string, e.g. `example.org:4296#password`.
+    OwnerServerProbeResult:
+      type: object
+      required:
+        - host
+        - port
+        - has_password
+        - online_players
+        - max_players
+        - protocol_version
+        - round_trip_ms
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        has_password:
+          type: boolean
+          description: Indicates whether the submitted connection string included a password. The password itself is not echoed.
+        online_players:
+          type: integer
+          minimum: 0
+        max_players:
+          type: integer
+          minimum: 0
+        protocol_version:
+          type: integer
+        server_name:
+          type:
+            - string
+            - "null"
+          maxLength: 80
+        motd:
+          type:
+            - string
+            - "null"
+          maxLength: 1200
+        round_trip_ms:
+          type: integer
+          minimum: 0
+    OwnerServerUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 1000
+        connection_string:
+          type: string
+          maxLength: 500
+        host:
+          type: string
+          maxLength: 253
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        password:
+          type:
+            - string
+            - "null"
+          maxLength: 200
+          description: Set to a string to replace the server password or null/empty to clear it.
+        visibility:
+          type: string
+          enum:
+            - public
+            - unlisted
+        region:
+          type: string
+          maxLength: 64
+        language:
+          type: string
+          description: Server language tag, for example `en`, `ru`, `pt-br`, or `multi`.
+          maxLength: 32
+          pattern: "^(multi|[a-z]{2,3}(-[a-z0-9]{2,8})*)$"
+        nsfw:
+          type: boolean
+        tags:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        rules:
+          type: string
+          maxLength: 1000
+        discord_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        website_url:
+          type:
+            - string
+            - "null"
+          format: uri
     PublicContentItem:
       type: object
       required:
@@ -3690,6 +4425,7 @@ components:
             - file_scan_queue
             - image_processing_queue
             - search_index_queue
+            - server_check_queue
             - email_queue
             - moderation_queue
             - cleanup_queue

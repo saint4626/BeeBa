@@ -101,6 +101,10 @@ type EmailChangeConfirmationPayload struct {
 	Template string `json:"template"`
 }
 
+type ServerCheckPayload struct {
+	ServerID string `json:"server_id"`
+}
+
 type EmailVerificationTokenForSend struct {
 	ID        string
 	UserID    string

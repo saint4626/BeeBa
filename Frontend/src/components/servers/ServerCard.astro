@@ -1,0 +1,74 @@
+---
+import { Globe2, LockKeyhole, RadioTower, Signal, UsersRound } from "lucide";
+import LucideIcon from "../ui/LucideIcon.astro";
+import ServerConnectionFields from "./ServerConnectionFields.astro";
+import { publicMediaURL } from "../../lib/api/media-url";
+import { buildServerPath } from "../../lib/seo/server-url";
+import { localizedPath, type Locale, ui } from "../../lib/i18n";
+import { serverLanguageLabel } from "../../lib/servers/languages";
+import type { PublicServerItem } from "../../lib/api/types";
+
+interface Props {
+  item: PublicServerItem;
+  publicAPIBaseURL: string;
+  locale?: Locale;
+}
+
+const { item, publicAPIBaseURL, locale = "en" } = Astro.props;
+const t = ui[locale].servers;
+const href = buildServerPath(locale, item);
+const owner = item.owner.display_name || item.owner.username;
+const ownerAvatarURL = publicMediaURL(publicAPIBaseURL, item.owner.avatar_image_id);
+const ownerInitials = owner.trim().slice(0, 2).toUpperCase();
+const onlinePlayers = item.check.online_players;
+const maxPlayers = item.check.max_players;
+const onlineLabel = typeof onlinePlayers === "number" && typeof maxPlayers === "number"
+  ? `${onlinePlayers.toLocaleString()}/${maxPlayers.toLocaleString()}`
+  : item.check.status === "online" ? t.online : t.offline;
+const regionLabel = item.region || t.anyRegion;
+const languageLabel = serverLanguageLabel(item.language, locale, t.anyLanguage);
+---
+
+<article class="server-card" data-motion-card>
+  <a class="server-card__main" href={href} aria-label={item.name}>
+    <span class="server-card__status" data-status={item.check.status}>
+      <LucideIcon node={RadioTower} size={15} />
+      <span>{item.check.status === "online" ? t.online : t.offline}</span>
+    </span>
+    <span class="server-card__title-row">
+      <strong>{item.name}</strong>
+      {item.has_password && <span class="server-card__lock" title={t.passwordProtected}><LucideIcon node={LockKeyhole} size={13} /></span>}
+    </span>
+    <span class="server-card__description">{item.description || item.check.motd || t.noDescription}</span>
+    <span class="server-card__owner">
+      <span class="server-card__avatar" aria-hidden="true">
+        {ownerAvatarURL ? <img src={ownerAvatarURL} alt="" width="24" height="24" loading="lazy" decoding="async" /> : ownerInitials}
+      </span>
+      <span>{owner}</span>
+    </span>
+  </a>
+  <dl class="server-card__metrics" aria-label={t.metricsLabel}>
+    <div>
+      <dt><LucideIcon node={UsersRound} size={13} /> {t.players}</dt>
+      <dd>{onlineLabel}</dd>
+    </div>
+    <div>
+      <dt><LucideIcon node={Signal} size={13} /> {t.ping}</dt>
+      <dd>{typeof item.check.round_trip_ms === "number" ? `${item.check.round_trip_ms} ms` : t.unknown}</dd>
+    </div>
+    <div>
+      <dt><LucideIcon node={Globe2} size={13} /> {t.region}</dt>
+      <dd>{regionLabel}</dd>
+    </div>
+    <div>
+      <dt>{t.language}</dt>
+      <dd>{languageLabel}</dd>
+    </div>
+  </dl>
+  <ServerConnectionFields item={item} locale={locale} class="server-connection-fields--card" compact />
+  {item.tags.length > 0 && (
+    <div class="server-card__tags" aria-label={t.tagsLabel}>
+      {item.tags.slice(0, 5).map((tag) => <a href={localizedPath(locale, `/servers?tags=${encodeURIComponent(tag.slug)}`)}>{tag.name}</a>)}
+    </div>
+  )}
+</article>

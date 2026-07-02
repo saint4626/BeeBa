@@ -4,8 +4,18 @@ import { changeEmail, changePassword, getCurrentUser, resendEmailVerification, u
 import { clearAuthSession, publishSessionUser, readAuthSession } from "../lib/auth/session";
 import { listContentImages, updateContentImage, deleteContentImage, uploadAvatar, uploadContentImage } from "../lib/api/media";
 import { deleteOwnedContent, listOwnedContent, updateOwnedContent } from "../lib/api/uploads";
+import { createOwnedServer, deleteOwnedServer, listOwnedServers, probeOwnedServerConnection, requestOwnedServerVerification, updateOwnedServer } from "../lib/api/servers";
 import { OWNER_TIMING } from "../lib/config/runtime";
-import type { OwnerContentItem, OwnerContentUpdateInput, OwnerStorageUsage, PublicUser, UploadedImage } from "../lib/api/types";
+import type {
+  OwnerContentItem,
+  OwnerContentUpdateInput,
+  OwnerServerCreateInput,
+  OwnerServerItem,
+  OwnerServerUpdateInput,
+  OwnerStorageUsage,
+  PublicUser,
+  UploadedImage,
+} from "../lib/api/types";
 
 interface RefreshOptions {
   silent?: boolean;
@@ -14,14 +24,18 @@ interface RefreshOptions {
 const LIVE_CONTENT_STATUSES = new Set(["draft", "uploaded", "pending_scan", "pending_moderation"]);
 const LIVE_SCAN_STATUSES = new Set(["pending", "running"]);
 const LIVE_IMAGE_STATUSES = new Set(["pending", "running"]);
+const LIVE_SERVER_CHECK_STATUSES = new Set(["pending", "running"]);
+const LIVE_SERVER_STATUSES = new Set(["draft", "pending_verification", "pending_moderation"]);
 
 export const useOwnerStore = defineStore("owner", () => {
   const accessToken = ref("");
   const user = ref<PublicUser | null>(null);
   const items = ref<OwnerContentItem[]>([]);
+  const serverItems = ref<OwnerServerItem[]>([]);
   const storageUsage = ref<OwnerStorageUsage | null>(null);
   const imagesByContent = ref<Record<string, UploadedImage[]>>({});
   const selectedContentID = ref("");
+  const selectedServerID = ref("");
   const loading = ref(false);
   const syncing = ref(false);
   const error = ref("");
@@ -30,6 +44,7 @@ export const useOwnerStore = defineStore("owner", () => {
 
   const isAuthenticated = computed(() => Boolean(user.value));
   const selectedItem = computed(() => items.value.find((item) => item.id === selectedContentID.value) ?? null);
+  const selectedServer = computed(() => serverItems.value.find((item) => item.id === selectedServerID.value) ?? null);
   const selectedImages = computed(() => imagesByContent.value[selectedContentID.value] ?? []);
 
   function logout() {
@@ -54,10 +69,15 @@ export const useOwnerStore = defineStore("owner", () => {
     syncing.value = true;
     try {
       const response = await listOwnedContent(accessToken.value);
+      const servers = await listOwnedServers(accessToken.value);
       items.value = response.data;
+      serverItems.value = servers;
       storageUsage.value = response.storage;
       if (selectedContentID.value && !items.value.some((item) => item.id === selectedContentID.value)) {
         selectedContentID.value = "";
+      }
+      if (selectedServerID.value && !serverItems.value.some((item) => item.id === selectedServerID.value)) {
+        selectedServerID.value = "";
       }
       await Promise.allSettled(items.value.map((item) => refreshImages(item.id)));
     } catch (caught) {
@@ -93,6 +113,93 @@ export const useOwnerStore = defineStore("owner", () => {
       kickOwnerRealtime();
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : "Failed to update content metadata.";
+      throw caught;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function selectServer(serverID: string) {
+    selectedServerID.value = serverID;
+    kickOwnerRealtime();
+  }
+
+  async function createServer(input: OwnerServerCreateInput) {
+    if (!user.value) return;
+    loading.value = true;
+    error.value = "";
+    try {
+      const created = await createOwnedServer(accessToken.value, input);
+      serverItems.value = [created, ...serverItems.value.filter((item) => item.id !== created.id)];
+      selectedServerID.value = created.id;
+      notice.value = "Server added and queued for availability check.";
+      kickOwnerRealtime(OWNER_TIMING.processingSyncIntervalMs);
+      return created;
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : "Failed to add server.";
+      throw caught;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function updateSelectedServer(input: OwnerServerUpdateInput) {
+    if (!user.value || !selectedServerID.value) return;
+    loading.value = true;
+    error.value = "";
+    try {
+      const updated = await updateOwnedServer(accessToken.value, selectedServerID.value, input);
+      serverItems.value = serverItems.value.map((item) => (item.id === updated.id ? updated : item));
+      selectedServerID.value = updated.id;
+      notice.value = "Server updated.";
+      kickOwnerRealtime(OWNER_TIMING.processingSyncIntervalMs);
+      return updated;
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : "Failed to update server.";
+      throw caught;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function verifyServer(serverID = selectedServerID.value) {
+    if (!user.value || !serverID) return;
+    loading.value = true;
+    error.value = "";
+    try {
+      const updated = await requestOwnedServerVerification(accessToken.value, serverID);
+      serverItems.value = serverItems.value.map((item) => (item.id === updated.id ? updated : item));
+      selectedServerID.value = updated.id;
+      notice.value = "Server availability check queued.";
+      kickOwnerRealtime(OWNER_TIMING.processingSyncIntervalMs);
+      return updated;
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : "Failed to queue server check.";
+      throw caught;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function probeServerConnection(connectionString: string) {
+    if (!user.value) return undefined;
+    return probeOwnedServerConnection(accessToken.value, connectionString);
+  }
+
+  async function deleteServer(serverID: string) {
+    if (!user.value || !serverID) return;
+    loading.value = true;
+    error.value = "";
+    try {
+      await deleteOwnedServer(accessToken.value, serverID);
+      serverItems.value = serverItems.value.filter((item) => item.id !== serverID);
+      if (selectedServerID.value === serverID) {
+        selectedServerID.value = "";
+      }
+      notice.value = "Server deleted.";
+      kickOwnerRealtime();
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : "Failed to delete server.";
       throw caught;
     } finally {
       loading.value = false;
@@ -276,9 +383,11 @@ export const useOwnerStore = defineStore("owner", () => {
     accessToken.value = "";
     user.value = null;
     items.value = [];
+    serverItems.value = [];
     storageUsage.value = null;
     imagesByContent.value = {};
     selectedContentID.value = "";
+    selectedServerID.value = "";
     clearAuthSession();
   }
 
@@ -332,6 +441,9 @@ export const useOwnerStore = defineStore("owner", () => {
     return items.value.some((item) =>
       LIVE_CONTENT_STATUSES.has(item.status) ||
       LIVE_SCAN_STATUSES.has(item.file?.scan_status ?? ""),
+    ) || serverItems.value.some((item) =>
+      LIVE_SERVER_STATUSES.has(item.status) ||
+      LIVE_SERVER_CHECK_STATUSES.has(item.check.status),
     ) || Object.values(imagesByContent.value).some((images) =>
       images.some((image) => LIVE_IMAGE_STATUSES.has(image.processing_status)),
     );
@@ -354,21 +466,30 @@ export const useOwnerStore = defineStore("owner", () => {
     accessToken,
     user,
     items,
+    serverItems,
     storageUsage,
     imagesByContent,
     selectedContentID,
+    selectedServerID,
     loading,
     syncing,
     error,
     notice,
     isAuthenticated,
     selectedItem,
+    selectedServer,
     selectedImages,
     logout,
     bootstrapUser,
     refreshLibrary,
     selectContent,
     updateSelectedMetadata,
+    selectServer,
+    createServer,
+    updateSelectedServer,
+    verifyServer,
+    probeServerConnection,
+    deleteServer,
     deleteContent,
     refreshImages,
     setAvatar,

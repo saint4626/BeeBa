@@ -1,0 +1,161 @@
+---
+import { ChevronDown, Filter, Plus, Search } from "lucide";
+import ServerCard from "./ServerCard.astro";
+import Dropdown from "../ui/Dropdown.astro";
+import LucideIcon from "../ui/LucideIcon.astro";
+import { localizedPath, type Locale, ui } from "../../lib/i18n";
+import { normalizeServerLanguageValue, serverLanguageOptions } from "../../lib/servers/languages";
+import type { CursorPagination, PublicServerItem } from "../../lib/api/types";
+
+interface Props {
+  items: PublicServerItem[];
+  pagination?: CursorPagination;
+  query?: string;
+  activeTags?: string[];
+  region?: string;
+  language?: string;
+  online?: boolean;
+  sort?: "newest" | "players" | "updated";
+  locale?: Locale;
+  publicAPIBaseURL: string;
+  error?: string;
+}
+
+const {
+  items,
+  pagination,
+  query = "",
+  activeTags = [],
+  region = "",
+  language = "",
+  online = false,
+  sort = "players",
+  locale = "en",
+  publicAPIBaseURL,
+  error = "",
+} = Astro.props;
+
+const t = ui[locale].servers;
+const serversPath = localizedPath(locale, "/servers");
+const profilePath = `${localizedPath(locale, "/profile")}#servers`;
+const normalizedLanguage = normalizeServerLanguageValue(language);
+const activeFilterCount = [region, normalizedLanguage, online ? "online" : "", activeTags.length ? "tags" : ""].filter(Boolean).length;
+const languageOptions = serverLanguageOptions(locale, t.anyLanguage, normalizedLanguage);
+const loadMoreHref = pagination?.next_cursor ? nextPageHref() : "";
+const sortOptions = [
+  { value: "players", label: t.sortPlayers },
+  { value: "newest", label: t.sortNewest },
+  { value: "updated", label: t.sortUpdated },
+] as const;
+const activeSortLabel = sortOptions.find((option) => option.value === sort)?.label ?? t.sortPlayers;
+
+function nextPageHref() {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (region) params.set("region", region);
+  if (normalizedLanguage) params.set("language", normalizedLanguage);
+  if (activeTags.length) params.set("tags", activeTags.join(","));
+  if (online) params.set("online", "true");
+  if (sort) params.set("sort", sort);
+  if (pagination?.next_cursor) params.set("cursor", pagination.next_cursor);
+  const value = params.toString();
+  return `${serversPath}${value ? `?${value}` : ""}`;
+}
+---
+
+<section class="servers-shell" aria-labelledby="server-catalog-title">
+  <div class="servers-toolbar">
+    <form class="servers-filter" action={serversPath} method="get">
+      <label class="servers-filter__field servers-filter__search">
+        <span>{t.searchLabel}</span>
+        <span class="servers-filter__search-control">
+          <LucideIcon node={Search} size={15} />
+          <input name="q" type="search" value={query} placeholder={t.searchPlaceholder} />
+        </span>
+      </label>
+      <div class="servers-filter__field servers-filter__sort" data-form-choice>
+        <span>{t.sortLabel}</span>
+        <input type="hidden" name="sort" value={sort} data-form-choice-input />
+        <Dropdown class="servers-filter__sort-dropdown" label={t.sortLabel} align="start" width="auto">
+          <span slot="trigger" data-form-choice-label>{activeSortLabel}</span>
+          <LucideIcon slot="trigger" node={ChevronDown} size={16} />
+          {sortOptions.map((option) => (
+            <button
+              class:list={["ui-dropdown__item", option.value === sort && "ui-dropdown__item--active"]}
+              type="button"
+              data-form-choice-option
+              data-value={option.value}
+              aria-pressed={option.value === sort ? "true" : "false"}
+            >
+              {option.label}
+            </button>
+          ))}
+        </Dropdown>
+      </div>
+      <label class="servers-filter__check">
+        <input type="checkbox" name="online" value="true" checked={online} />
+        <span>{t.onlineOnly}</span>
+      </label>
+      <Dropdown class="servers-filter__advanced" label={t.filters} align="end" width="md">
+        <LucideIcon slot="trigger" node={Filter} size={15} />
+        <span slot="trigger">{t.filters}</span>
+        {activeFilterCount > 0 && <span slot="trigger" class="servers-filter__count">{activeFilterCount}</span>}
+        <label class="servers-filter__field">
+          <span>{t.region}</span>
+          <input name="region" type="text" value={region} placeholder={t.anyRegion} />
+        </label>
+        <label class="servers-filter__field">
+          <span>{t.language}</span>
+          <select name="language">
+            {languageOptions.map((option) => (
+              <option value={option.value} selected={option.value === normalizedLanguage}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="servers-filter__field">
+          <span>{t.tagsLabel}</span>
+          <input name="tags" type="text" value={activeTags.join(", ")} placeholder="roleplay, eu, quest" />
+        </label>
+      </Dropdown>
+      <button class="button button--secondary" type="submit">
+        <span>{t.applyFilters}</span>
+      </button>
+      <a class="button button--primary" href={profilePath}>
+        <LucideIcon node={Plus} size={15} />
+        <span>{t.addServer}</span>
+      </a>
+    </form>
+  </div>
+
+  {error ? (
+    <div class="catalog-empty" role="status">
+      <div class="catalog-empty__title">
+        <span aria-hidden="true"></span>
+        <strong>{t.unavailableTitle}</strong>
+        <span aria-hidden="true"></span>
+      </div>
+      <p>{error}</p>
+    </div>
+  ) : items.length === 0 ? (
+    <div class="catalog-empty">
+      <div class="catalog-empty__title">
+        <span aria-hidden="true"></span>
+        <strong>{t.emptyTitle}</strong>
+        <span aria-hidden="true"></span>
+      </div>
+      <p>{t.emptyCopy}</p>
+    </div>
+  ) : (
+    <div class="servers-grid">
+      {items.map((item) => <ServerCard item={item} publicAPIBaseURL={publicAPIBaseURL} locale={locale} />)}
+    </div>
+  )}
+
+  {pagination?.next_cursor && (
+    <a class="button button--secondary servers-load-more" href={loadMoreHref}>
+      {t.loadMore}
+    </a>
+  )}
+</section>

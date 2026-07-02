@@ -62,6 +62,8 @@ type RateLimitConfig struct {
 	SocialComments     RateLimitRule
 	SocialLikes        RateLimitRule
 	SocialReports      RateLimitRule
+	ServerWrite        RateLimitRule
+	ServerVerify       RateLimitRule
 	AdminAction        RateLimitRule
 }
 
@@ -81,6 +83,8 @@ var defaultRateLimits = RateLimitConfig{
 	SocialComments:     RateLimitRule{Limit: 10, Window: time.Hour},
 	SocialLikes:        RateLimitRule{Limit: 60, Window: time.Hour},
 	SocialReports:      RateLimitRule{Limit: 5, Window: time.Hour},
+	ServerWrite:        RateLimitRule{Limit: 20, Window: time.Hour},
+	ServerVerify:       RateLimitRule{Limit: 20, Window: time.Hour},
 	AdminAction:        RateLimitRule{Limit: 240, Window: time.Hour},
 }
 
@@ -333,6 +337,8 @@ func loadRateLimits() RateLimitConfig {
 		SocialComments:     envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_COMMENTS", defaultRateLimits.SocialComments),
 		SocialLikes:        envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_LIKES", defaultRateLimits.SocialLikes),
 		SocialReports:      envRateLimit("BEEBA_RATE_LIMIT_SOCIAL_REPORTS", defaultRateLimits.SocialReports),
+		ServerWrite:        envRateLimit("BEEBA_RATE_LIMIT_SERVER_WRITE", defaultRateLimits.ServerWrite),
+		ServerVerify:       envRateLimit("BEEBA_RATE_LIMIT_SERVER_VERIFY", defaultRateLimits.ServerVerify),
 		AdminAction:        envRateLimit("BEEBA_RATE_LIMIT_ADMIN_ACTION", defaultRateLimits.AdminAction),
 	}
 }
@@ -361,6 +367,8 @@ func (r RateLimitConfig) validate() error {
 		"BEEBA_RATE_LIMIT_SOCIAL_COMMENTS":      r.SocialComments,
 		"BEEBA_RATE_LIMIT_SOCIAL_LIKES":         r.SocialLikes,
 		"BEEBA_RATE_LIMIT_SOCIAL_REPORTS":       r.SocialReports,
+		"BEEBA_RATE_LIMIT_SERVER_WRITE":         r.ServerWrite,
+		"BEEBA_RATE_LIMIT_SERVER_VERIFY":        r.ServerVerify,
 		"BEEBA_RATE_LIMIT_ADMIN_ACTION":         r.AdminAction,
 	}
 

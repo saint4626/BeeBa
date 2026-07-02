@@ -52,6 +52,10 @@ func NewAPI(ctx context.Context, cfg config.Config, log *slog.Logger) (*API, err
 		deps.ContentStore = contentRepository
 		deps.SearchStore = contentRepository
 		deps.OwnedContentStore = contentRepository
+		serverRepository := postgres.NewServerRepository(pool, secretBox)
+		deps.ServerStore = serverRepository
+		deps.OwnedServerStore = serverRepository
+		deps.AdminServerStore = serverRepository
 		downloadRepository := postgres.NewDownloadRepository(pool)
 		deps.DownloadStore = downloadRepository
 		mediaRepository := postgres.NewMediaRepository(pool)

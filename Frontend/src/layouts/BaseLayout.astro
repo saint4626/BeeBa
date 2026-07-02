@@ -1,6 +1,6 @@
 ---
 import { Buffer } from "node:buffer";
-import { Activity, BookOpen, ChevronDown, Grid2X2, Home, LogOut, Search, Settings, ShieldCheck, Upload, UserRound } from "lucide";
+import { Activity, BookOpen, ChevronDown, Grid2X2, Home, LogOut, RadioTower, Search, Settings, ShieldCheck, Upload, UserRound } from "lucide";
 import Dropdown from "../components/ui/Dropdown.astro";
 import LucideIcon from "../components/ui/LucideIcon.astro";
 import { getServerAPIBaseURL } from "../lib/api/client";
@@ -74,6 +74,7 @@ const nextLocale = alternateLocale(locale);
 const langPath = localizedPath(nextLocale, `${Astro.url.pathname}${Astro.url.search}`);
 const homePath = localizedPath(locale, "/");
 const catalogPath = localizedPath(locale, "/catalog");
+const serversPath = localizedPath(locale, "/servers");
 const apiPath = localizedPath(locale, "/api-reference");
 const uploadPath = localizedPath(locale, "/upload");
 const loginPath = localizedPath(locale, "/login");
@@ -264,6 +265,7 @@ async function cspHash(value: string) {
           <nav class="site-nav" aria-label="Primary navigation">
             <a class={`nav-link ${activeNav("/") ? "nav-link--active" : ""}`} href={homePath}><LucideIcon node={Home} size={15} />{t.nav.home}</a>
             <a class={`nav-link ${activeNav("/catalog") ? "nav-link--active" : ""}`} href={catalogPath}><LucideIcon node={Grid2X2} size={15} />{t.nav.catalog}</a>
+            <a class={`nav-link ${activeNav("/servers") ? "nav-link--active" : ""}`} href={serversPath}><LucideIcon node={RadioTower} size={15} />{t.nav.servers}</a>
             <a class={`nav-link ${activeNav("/api-reference") ? "nav-link--active" : ""}`} href={apiPath}><LucideIcon node={BookOpen} size={15} />{t.nav.api}</a>
             <a class="nav-link" href={statusURL} data-astro-reload><LucideIcon node={Activity} size={15} />{t.nav.status}</a>
           </nav>
@@ -289,6 +291,7 @@ async function cspHash(value: string) {
                 <span class="site-footer__copy">{t.footer.copyright}</span>
                 <a href={homePath}>{t.nav.home}</a>
                 <a href={catalogPath}>{t.nav.catalog}</a>
+                <a href={serversPath}>{t.nav.servers}</a>
                 <a href={apiPath}>{t.nav.api}</a>
                 <a href={statusURL} data-astro-reload>{t.nav.status}</a>
                 <span class="site-footer__group" aria-label={t.footer.clubLinksLabel}>

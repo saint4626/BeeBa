@@ -260,6 +260,110 @@ export interface OwnerContentUpdateInput {
   tags?: string[];
 }
 
+export interface ServerOwner {
+  id: string;
+  username: string;
+  display_name?: string | null;
+  avatar_image_id?: string | null;
+}
+
+export interface ServerCheckState {
+  status: "pending" | "running" | "online" | "offline" | "failed";
+  online_players?: number | null;
+  max_players?: number | null;
+  protocol_version?: number | null;
+  server_name?: string | null;
+  motd?: string | null;
+  round_trip_ms?: number | null;
+  last_checked_at?: string | null;
+  last_error?: string | null;
+}
+
+export interface PublicServerItem {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  visibility: "public" | "unlisted";
+  status: "published" | "offline" | "failed";
+  host: string;
+  port: number;
+  has_password: boolean;
+  connection_string: string;
+  region: string;
+  language: string;
+  nsfw: boolean;
+  tags: PublicContentTag[];
+  owner: ServerOwner;
+  check: ServerCheckState;
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicServerDetail extends PublicServerItem {
+  rules: string;
+  discord_url?: string | null;
+  website_url?: string | null;
+}
+
+export interface OwnerServerItem extends PublicServerDetail {
+  status: "draft" | "pending_verification" | "pending_moderation" | "published" | "offline" | "failed" | "hidden" | "deleted";
+  password?: string | null;
+}
+
+export interface ServerCatalogFilter {
+  q?: string;
+  region?: string;
+  language?: string;
+  tags?: string[];
+  online?: boolean;
+  include_nsfw?: boolean;
+  sort?: "newest" | "players" | "updated";
+  cursor?: string;
+  limit?: number;
+}
+
+export interface OwnerServerFilter {
+  q?: string;
+  status?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface OwnerServerListResponse extends APIListResponse<OwnerServerItem> {}
+
+export interface OwnerServerProbeResult {
+  host: string;
+  port: number;
+  has_password: boolean;
+  online_players: number;
+  max_players: number;
+  protocol_version: number;
+  server_name?: string | null;
+  motd?: string | null;
+  round_trip_ms: number;
+}
+
+export interface OwnerServerCreateInput {
+  name: string;
+  description?: string;
+  connection_string?: string;
+  host?: string;
+  port?: number;
+  password?: string;
+  visibility?: "public" | "unlisted";
+  region?: string;
+  language?: string;
+  nsfw?: boolean;
+  tags?: string[];
+  rules?: string;
+  discord_url?: string;
+  website_url?: string;
+}
+
+export interface OwnerServerUpdateInput extends Partial<OwnerServerCreateInput> {}
+
 export interface AdminStatus {
   status: "ok";
   actor: PublicUser;
@@ -379,7 +483,7 @@ export interface AuditLogEntry {
 
 export interface AdminJob {
   id: string;
-  queue_name: "file_scan_queue" | "image_processing_queue" | "search_index_queue" | "email_queue" | "moderation_queue" | "cleanup_queue";
+  queue_name: "file_scan_queue" | "image_processing_queue" | "search_index_queue" | "email_queue" | "moderation_queue" | "cleanup_queue" | "server_check_queue";
   job_type: string;
   payload: Record<string, unknown> | unknown[] | null;
   status: "pending" | "running" | "succeeded" | "failed" | "dead";

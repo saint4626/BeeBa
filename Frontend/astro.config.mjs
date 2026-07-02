@@ -8,6 +8,7 @@ const chunkSizeWarningLimitKiB = 650;
 const siteURL = process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321';
 const absoluteSiteURL = siteURL.endsWith('/') ? siteURL : `${siteURL}/`;
 const contentSitemapURL = new URL('content-sitemap.xml', absoluteSiteURL).href;
+const serverSitemapURL = new URL('server-sitemap.xml', absoluteSiteURL).href;
 const catalogCategorySitemapPaths = [
   '/catalog/worlds',
   '/catalog/avatars',
@@ -17,6 +18,8 @@ const catalogCategorySitemapPaths = [
   '/ru/catalog/avatars',
   '/ru/catalog/props',
   '/ru/catalog/prefabs',
+  '/servers',
+  '/ru/servers',
 ];
 const sitemapCustomPages = catalogCategorySitemapPaths.map((path) => new URL(path, absoluteSiteURL).href);
 const siteHostname = new URL(absoluteSiteURL).hostname;
@@ -30,6 +33,7 @@ const sitemapExcludedPathPrefixes = [
   '/admin',
   '/404',
   '/content-sitemap.xml',
+  '/server-sitemap.xml',
   '/confirm-email-change',
   '/confirm-password-change',
   '/login',
@@ -180,7 +184,7 @@ export default defineConfig({
     vue({ appEntrypoint: '/src/vue-app' }),
     sitemap({
       customPages: sitemapCustomPages,
-      customSitemaps: [contentSitemapURL],
+      customSitemaps: [contentSitemapURL, serverSitemapURL],
       serialize: addDefaultSitemapAlternate,
       i18n: {
         defaultLocale: 'en',

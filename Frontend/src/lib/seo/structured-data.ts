@@ -1,6 +1,7 @@
 import { contentMetaDescription } from "./content-url.ts";
+import { serverMetaDescription } from "./server-url.ts";
 import type { Locale } from "../i18n";
-import type { PublicContentItem, PublicProfile } from "../api/types";
+import type { PublicContentItem, PublicProfile, PublicServerItem } from "../api/types";
 
 export type JsonLdNode = Record<string, unknown>;
 
@@ -99,6 +100,51 @@ export function profileJsonLd(site: URL, profile: PublicProfile, canonicalPath: 
       alternateName: profile.username,
       image: imageURL ? new URL(imageURL, site).href : undefined,
     },
+  });
+}
+
+export function serverCatalogJsonLd(site: URL, canonicalPath: string, entries: BreadcrumbEntry[]): JsonLdNode[] {
+  return [
+    breadcrumbJsonLd(site, entries),
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "BeeBa Basis VR Server Catalog",
+      url: new URL(canonicalPath, site).href,
+      isPartOf: {
+        "@type": "WebSite",
+        name: ".BEEBA",
+        url: new URL("/", site).href,
+      },
+    },
+  ];
+}
+
+export function serverJsonLd(site: URL, server: PublicServerItem, locale: Locale, canonicalPath: string): JsonLdNode {
+  const ownerName = server.owner.display_name || server.owner.username;
+  return removeEmptyValues({
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    name: server.name,
+    description: serverMetaDescription(server, locale),
+    url: new URL(canonicalPath, site).href,
+    datePublished: server.published_at,
+    dateModified: server.updated_at,
+    genre: "Basis VR server",
+    isAccessibleForFree: true,
+    author: {
+      "@type": "Person",
+      name: ownerName,
+      alternateName: server.owner.username,
+      url: new URL(`/users/${encodeURIComponent(server.owner.username)}`, site).href,
+    },
+    interactionStatistic: typeof server.check.online_players === "number" ? [
+      {
+        "@type": "InteractionCounter",
+        interactionType: { "@type": "JoinAction" },
+        userInteractionCount: server.check.online_players,
+      },
+    ] : undefined,
   });
 }
 

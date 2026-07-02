@@ -156,6 +156,43 @@ function initGlobalSearch(): Cleanup {
   return () => cleanups.forEach((cleanup) => cleanup());
 }
 
+function initFormChoiceDropdowns(): Cleanup {
+  const choices = Array.from(document.querySelectorAll<HTMLElement>("[data-form-choice]"));
+  if (!choices.length) {
+    return () => {};
+  }
+
+  const cleanups: Cleanup[] = [];
+  choices.forEach((choice) => {
+    const input = choice.querySelector<HTMLInputElement>("[data-form-choice-input]");
+    const label = choice.querySelector<HTMLElement>("[data-form-choice-label]");
+    const options = Array.from(choice.querySelectorAll<HTMLButtonElement>("[data-form-choice-option]"));
+    if (!input || !options.length) {
+      return;
+    }
+
+    options.forEach((option) => {
+      const onClick = () => {
+        const value = option.dataset.value ?? "";
+        input.value = value;
+        if (label) {
+          label.textContent = option.textContent?.trim() ?? "";
+        }
+        options.forEach((item) => {
+          const isActive = item === option;
+          item.classList.toggle("ui-dropdown__item--active", isActive);
+          item.setAttribute("aria-pressed", isActive ? "true" : "false");
+        });
+        option.closest<HTMLDetailsElement>("[data-ui-dropdown]")?.removeAttribute("open");
+      };
+      option.addEventListener("click", onClick);
+      cleanups.push(() => option.removeEventListener("click", onClick));
+    });
+  });
+
+  return () => cleanups.forEach((cleanup) => cleanup());
+}
+
 function initPageProgress(): Cleanup {
   const progress = document.querySelector<HTMLElement>("[data-page-progress]");
   const bar = progress?.querySelector<HTMLElement>("span");
@@ -775,7 +812,7 @@ function initContentCarousels(): Cleanup {
 
 function initMotion() {
   window.__beebaMotionCleanup?.();
-  const cleanups = [initLenis(), initPageProgress(), initHome(), initAuthNav(), initDropdowns(), initGlobalSearch(), initCopyButtons(), initContentCarousels()];
+  const cleanups = [initLenis(), initPageProgress(), initHome(), initAuthNav(), initDropdowns(), initGlobalSearch(), initFormChoiceDropdowns(), initCopyButtons(), initContentCarousels()];
   window.__beebaMotionCleanup = () => cleanups.forEach((cleanup) => cleanup());
 }
 

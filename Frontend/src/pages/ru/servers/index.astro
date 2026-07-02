@@ -1,0 +1,84 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import ServerCatalogView from "../../../components/servers/ServerCatalogView.astro";
+import { getPublicAPIBaseURL } from "../../../lib/api/client";
+import { listPublicServers } from "../../../lib/api/servers";
+import { ui } from "../../../lib/i18n";
+import { buildLocaleAlternates } from "../../../lib/seo/content-url";
+import { serverCatalogJsonLd } from "../../../lib/seo/structured-data";
+import type { APIListResponse, PublicServerItem, ServerCatalogFilter } from "../../../lib/api/types";
+
+export const prerender = false;
+
+const locale = "ru";
+const t = ui[locale];
+const site = Astro.site ?? new URL("http://localhost:4321");
+const publicAPIBaseURL = getPublicAPIBaseURL();
+const canonicalPath = "/ru/servers";
+const alternatePaths = buildLocaleAlternates("/servers", canonicalPath);
+const filter = parseFilter(Astro.url.searchParams);
+let response: APIListResponse<PublicServerItem> = { data: [], pagination: { limit: filter.limit ?? 24 } };
+let error = "";
+
+try {
+  response = await listPublicServers(filter);
+} catch (caught) {
+  error = caught instanceof Error ? caught.message : t.servers.unavailableTitle;
+}
+
+const jsonLd = serverCatalogJsonLd(site, canonicalPath, [
+  { name: t.nav.home, path: "/ru" },
+  { name: t.nav.servers, path: canonicalPath },
+]);
+
+function parseFilter(params: URLSearchParams): ServerCatalogFilter {
+  return {
+    q: params.get("q")?.trim() || undefined,
+    region: params.get("region")?.trim() || undefined,
+    language: params.get("language")?.trim() || undefined,
+    tags: parseTags(params),
+    online: params.get("online") === "true",
+    sort: parseSort(params.get("sort")),
+    cursor: params.get("cursor") || undefined,
+    limit: 24,
+  };
+}
+
+function parseTags(params: URLSearchParams): string[] {
+  return params.getAll("tags")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function parseSort(value: string | null): ServerCatalogFilter["sort"] {
+  return value === "newest" || value === "updated" || value === "players" ? value : "players";
+}
+---
+
+<BaseLayout
+  title={t.servers.title}
+  description={t.servers.description}
+  canonicalPath={canonicalPath}
+  alternatePaths={alternatePaths}
+  jsonLd={jsonLd}
+>
+  <div class="servers-page-heading">
+    <p class="eyebrow">{t.servers.eyebrow}</p>
+    <h1>{t.servers.heading}</h1>
+    <p>{t.servers.lead}</p>
+  </div>
+  <ServerCatalogView
+    items={response.data}
+    pagination={response.pagination}
+    query={filter.q ?? ""}
+    activeTags={filter.tags ?? []}
+    region={filter.region ?? ""}
+    language={filter.language ?? ""}
+    online={filter.online}
+    sort={filter.sort}
+    locale={locale}
+    publicAPIBaseURL={publicAPIBaseURL}
+    error={error}
+  />
+</BaseLayout>

@@ -1,0 +1,74 @@
+---
+import { Copy } from "lucide";
+import LucideIcon from "../ui/LucideIcon.astro";
+import { type Locale, ui } from "../../lib/i18n";
+import { serverConnectionParts } from "../../lib/servers/connection";
+import type { PublicServerItem } from "../../lib/api/types";
+
+type ServerConnectionSource = Pick<PublicServerItem, "host" | "port" | "has_password" | "connection_string">;
+
+interface Props {
+  item: ServerConnectionSource;
+  locale?: Locale;
+  class?: string;
+  compact?: boolean;
+}
+
+const {
+  item,
+  locale = "en",
+  class: className = "",
+  compact = false,
+} = Astro.props;
+
+const t = ui[locale].servers;
+const connection = serverConnectionParts(item);
+const passwordDisplay = connection.password || (connection.hasPassword ? t.passwordProtected : t.noPassword);
+---
+
+<div class:list={["server-connection-fields", compact && "server-connection-fields--compact", className]} aria-label={t.connectionFieldsLabel}>
+  {compact ? (
+    <button class="server-connection-part server-connection-part--readonly server-connection-part--clickable" type="button" data-copy-text={connection.host} data-copy-label={t.hostCopied} aria-label={t.copyHost} title={t.copyHost}>
+      <span>{t.hostField}</span>
+      <code>{connection.host}</code>
+    </button>
+  ) : (
+    <div class="server-connection-part">
+      <span>{t.hostField}</span>
+      <code>{connection.host}</code>
+      <button class="server-connection-part__copy" type="button" data-copy-text={connection.host} data-copy-label={t.hostCopied} aria-label={t.copyHost} title={t.copyHost}>
+        <LucideIcon node={Copy} size={14} />
+      </button>
+    </div>
+  )}
+  {compact ? (
+    <button class="server-connection-part server-connection-part--readonly server-connection-part--clickable" type="button" data-copy-text={connection.port} data-copy-label={t.portCopied} aria-label={t.copyPort} title={t.copyPort}>
+      <span>{t.portField}</span>
+      <code>{connection.port}</code>
+    </button>
+  ) : (
+    <div class="server-connection-part">
+      <span>{t.portField}</span>
+      <code>{connection.port}</code>
+      <button class="server-connection-part__copy" type="button" data-copy-text={connection.port} data-copy-label={t.portCopied} aria-label={t.copyPort} title={t.copyPort}>
+        <LucideIcon node={Copy} size={14} />
+      </button>
+    </div>
+  )}
+  {compact && connection.password ? (
+    <button class="server-connection-part server-connection-part--readonly server-connection-part--clickable" type="button" data-copy-text={connection.password} data-copy-label={t.serverPasswordCopied} aria-label={t.copyServerPassword} title={t.copyServerPassword}>
+      <span>{t.passwordField}</span>
+      <code>{passwordDisplay}</code>
+    </button>
+  ) : (
+    <div class:list={["server-connection-part", (compact || !connection.password) && "server-connection-part--readonly"]}>
+      <span>{t.passwordField}</span>
+      <code>{passwordDisplay}</code>
+      {!compact && connection.password && (
+      <button class="server-connection-part__copy" type="button" data-copy-text={connection.password} data-copy-label={t.serverPasswordCopied} aria-label={t.copyServerPassword} title={t.copyServerPassword}>
+        <LucideIcon node={Copy} size={14} />
+      </button>
+      )}
+    </div>
+  )}
+</div>

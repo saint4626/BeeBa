@@ -18,10 +18,12 @@ import (
 	"beeba.org/internal/config"
 	contentdomain "beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/jobs"
+	serversdomain "beeba.org/internal/domain/servers"
 	mediadomain "beeba.org/internal/domain/media"
 	emailclient "beeba.org/internal/email"
 	"beeba.org/internal/repository/postgres"
 	searchclient "beeba.org/internal/search/meilisearch"
+	"beeba.org/internal/servercheck"
 	"beeba.org/internal/security/antivirus"
 	"beeba.org/internal/security/basisbee"
 	"beeba.org/internal/security/images"
@@ -39,6 +41,7 @@ type Worker struct {
 	db      *pgxpool.Pool
 	jobs    postgres.JobRepository
 	media   postgres.MediaRepository
+	servers postgres.ServerRepository
 	objects objectReader
 	secrets secretbox.Box
 	search  *searchclient.Client
@@ -132,6 +135,7 @@ func NewWorker(ctx context.Context, cfg config.Config, log *slog.Logger) (*Worke
 		db:      db,
 		jobs:    postgres.NewJobRepository(db),
 		media:   postgres.NewMediaRepository(db),
+		servers: postgres.NewServerRepository(db, secrets),
 		objects: objects,
 		secrets: secrets,
 		search:  search,
@@ -299,8 +303,7 @@ func (w *Worker) processSearchQueue(ctx context.Context) error {
 func (w *Worker) processEmailQueue(ctx context.Context) error {
 	job, err := w.jobs.Claim(ctx, "email_queue", w.id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		w.log.Debug("worker_idle", slog.String("queue", "file_scan_queue,image_processing_queue,search_index_queue,email_queue"))
-		return err
+		return w.processServerCheckQueue(ctx)
 	}
 	if err != nil {
 		return fmt.Errorf("claim email job: %w", err)
@@ -325,6 +328,93 @@ func (w *Worker) processEmailQueue(ctx context.Context) error {
 		return fmt.Errorf("process email job: %w; mark failed: %w", processErr, markErr)
 	}
 	return processErr
+}
+
+func (w *Worker) processServerCheckQueue(ctx context.Context) error {
+	job, err := w.jobs.Claim(ctx, "server_check_queue", w.id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.log.Debug("worker_idle", slog.String("queue", "file_scan_queue,image_processing_queue,search_index_queue,email_queue,server_check_queue"))
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("claim server check job: %w", err)
+	}
+
+	w.log.Info("worker_job_claimed", slog.String("job_id", job.ID), slog.String("job_type", job.JobType))
+	if job.JobType != "check_basis_server" {
+		return w.jobs.MarkFailed(ctx, job, "unsupported job type")
+	}
+	if err := w.processServerCheck(ctx, job); err != nil {
+		if markErr := w.jobs.MarkFailed(ctx, job, err.Error()); markErr != nil {
+			return fmt.Errorf("process server check: %w; mark failed: %w", err, markErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (w *Worker) processServerCheck(ctx context.Context, job jobs.Job) error {
+	var payload jobs.ServerCheckPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return fmt.Errorf("decode server check payload: %w", err)
+	}
+	if payload.ServerID == "" {
+		return fmt.Errorf("server check payload is incomplete")
+	}
+	target, err := w.servers.GetCheckTarget(ctx, payload.ServerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if markErr := w.jobs.MarkSucceeded(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark stale server check job succeeded: %w", markErr)
+		}
+		w.log.Info("worker_server_check_skipped",
+			slog.String("job_id", job.ID),
+			slog.String("server_id", payload.ServerID),
+			slog.String("reason", "server_not_available_for_check"),
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load server check target: %w", err)
+	}
+
+	checkedAt := time.Now().UTC()
+	info, probeErr := servercheck.Probe(ctx, target.Host, target.Port, 3*time.Second)
+	result := serversdomain.CheckResult{
+		Status:    serversdomain.CheckStatusOnline,
+		CheckedAt: checkedAt,
+	}
+	if probeErr != nil {
+		message := probeErr.Error()
+		result.Status = serversdomain.CheckStatusOffline
+		result.LastError = &message
+	} else {
+		result.OnlinePlayers = intPtr(info.OnlinePlayers)
+		result.MaxPlayers = intPtr(info.MaxPlayers)
+		result.ProtocolVersion = intPtr(info.ProtocolVersion)
+		result.ServerName = stringPtr(strings.TrimSpace(info.ServerName))
+		result.Motd = stringPtr(strings.TrimSpace(info.Motd))
+		result.RoundTripMS = intPtr(info.RoundTripMS)
+	}
+
+	if err := w.servers.CompleteCheck(ctx, payload.ServerID, result); err != nil {
+		return fmt.Errorf("complete server check: %w", err)
+	}
+	if err := w.jobs.MarkSucceeded(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark server check job succeeded: %w", err)
+	}
+	w.log.Info("worker_server_check_completed",
+		slog.String("server_id", payload.ServerID),
+		slog.String("status", result.Status),
+	)
+	return nil
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func (w *Worker) processFileScan(ctx context.Context, job jobs.Job) error {

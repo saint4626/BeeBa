@@ -16,6 +16,7 @@ import (
 	mediahandler "beeba.org/internal/http/handlers/media"
 	openapihandler "beeba.org/internal/http/handlers/openapi"
 	searchhandler "beeba.org/internal/http/handlers/search"
+	serverhandler "beeba.org/internal/http/handlers/servers"
 	socialhandler "beeba.org/internal/http/handlers/social"
 	taghandler "beeba.org/internal/http/handlers/tags"
 	uploadhandler "beeba.org/internal/http/handlers/upload"
@@ -48,6 +49,9 @@ type Dependencies struct {
 	DownloadStore      downloadhandler.Store
 	MediaStore         mediahandler.Store
 	SocialStore        socialhandler.Store
+	ServerStore        serverhandler.Store
+	OwnedServerStore   mehandler.ServerStore
+	AdminServerStore   adminhandler.ServerAdminStore
 	PublicUserStore    userhandler.Store
 	AdminUserStore     adminhandler.UserStore
 	AuditStore         adminhandler.AuditStore
@@ -115,11 +119,13 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	tagHandler := taghandler.New(deps.TagStore)
 	contentHandler := contenthandler.New(deps.ContentStore, deps.UserStore)
 	searchHandler := searchhandler.New(deps.SearchClient, deps.SearchStore)
+	serverHandler := serverhandler.New(deps.ServerStore)
 	socialHandler := socialhandler.New(deps.SocialStore, deps.RateLimiter, cfg.RateLimits)
 	downloadHandler := downloadhandler.New(cfg, deps.DownloadStore, deps.ObjectStore)
 	mediaHandler := mediahandler.New(cfg, deps.MediaStore, deps.ObjectStore)
 	userHandler := userhandler.New(deps.PublicUserStore)
 	meContentHandler := mehandler.NewContentHandler(deps.OwnedContentStore, cfg.UserStorageQuotaBytes)
+	meServerHandler := mehandler.NewServerHandler(deps.OwnedServerStore)
 	meAccountHandler := mehandler.NewAccountHandler(deps.AccountStore, cfg.EmailDailyLimit)
 	authHandler := authhandler.New(cfg, deps.UserStore)
 	uploadHandler := uploadhandler.New(cfg, deps.UploadStore, deps.ObjectStore, deps.SecretBox)
@@ -130,6 +136,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	adminJobsHandler := adminhandler.NewJobsHandler(deps.JobStore)
 	adminFilesHandler := adminhandler.NewFilesHandler(deps.FileStore)
 	adminTaxonomyHandler := adminhandler.NewTaxonomyHandler(deps.AdminCategoryStore, deps.AdminTagStore)
+	adminServerHandler := adminhandler.NewServerAdminHandler(deps.AdminServerStore)
 	rate := func(scope string, rule config.RateLimitRule) fiber.Handler {
 		return http_rate.FixedWindow(deps.RateLimiter, scope, rule.Limit, rule.Window)
 	}
@@ -145,6 +152,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	v1.Get("/tags", tagHandler.List)
 	v1.Get("/users/:username", userHandler.Profile)
 	v1.Get("/content", contentHandler.List)
+	v1.Get("/servers", rate("servers_read", cfg.RateLimits.Search), serverHandler.List)
+	v1.Get("/servers/:serverID", serverHandler.Detail)
 	v1.Get("/content/:contentID/comments", socialHandler.ListComments)
 	v1.Post("/content/:contentID/comments", authz.RequireBearer(deps.UserStore), socialHandler.CreateComment)
 	v1.Post("/content/:contentID/like", authz.RequireBearer(deps.UserStore), socialHandler.Like)
@@ -172,6 +181,12 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	meGroup.Patch("/password", rate("auth_account_change", cfg.RateLimits.AuthAccountChange), meAccountHandler.ChangePassword)
 	meGroup.Patch("/email", rate("auth_account_change", cfg.RateLimits.AuthAccountChange), meAccountHandler.ChangeEmail)
 	meGroup.Get("/content", meContentHandler.List)
+	meGroup.Get("/servers", meServerHandler.List)
+	meGroup.Post("/servers/probe", rate("server_verify", cfg.RateLimits.ServerVerify), meServerHandler.Probe)
+	meGroup.Post("/servers", rate("server_write", cfg.RateLimits.ServerWrite), meServerHandler.Create)
+	meGroup.Patch("/servers/:serverID", rate("server_write", cfg.RateLimits.ServerWrite), meServerHandler.Update)
+	meGroup.Delete("/servers/:serverID", rate("server_write", cfg.RateLimits.ServerWrite), meServerHandler.Delete)
+	meGroup.Post("/servers/:serverID/verify", rate("server_verify", cfg.RateLimits.ServerVerify), meServerHandler.Verify)
 	meGroup.Patch("/content/:contentID", meContentHandler.Update)
 	meGroup.Delete("/content/:contentID", meContentHandler.Delete)
 	meGroup.Post("/content/:contentID/download-link", rate("download_owner_link", cfg.RateLimits.DownloadOwner), meContentHandler.DownloadLink)
@@ -196,6 +211,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, deps Dependencies) *fiber.Ap
 	adminGroup.Post("/comments/:commentID/approve", adminActionRate, adminModerationHandler.ApproveComment)
 	adminGroup.Post("/comments/:commentID/hide", adminActionRate, adminModerationHandler.HideComment)
 	adminGroup.Post("/reports/:reportID/status", adminActionRate, adminModerationHandler.ReviewReport)
+	adminGroup.Post("/servers/:serverID/hide", adminActionRate, adminServerHandler.HideServer)
+	adminGroup.Post("/servers/:serverID/restore", adminActionRate, adminServerHandler.RestoreServer)
 	adminOwnerGroup := v1.Group("/admin", authz.RequireBearer(deps.UserStore), authz.RequireRole("admin", "owner"))
 	adminOwnerGroup.Get("/users", adminUsersHandler.List)
 	adminOwnerGroup.Post("/users/:userID/ban", adminActionRate, adminUsersHandler.Ban)

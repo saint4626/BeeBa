@@ -130,6 +130,7 @@ function compactPayload(value: AdminJob["payload"]) {
           <option value="file_scan_queue">{{ t.fileScan }}</option>
           <option value="image_processing_queue">{{ t.imageProcessing }}</option>
           <option value="search_index_queue">{{ t.searchIndex }}</option>
+          <option value="server_check_queue">{{ t.serverCheck }}</option>
           <option value="email_queue">{{ common.email }}</option>
           <option value="moderation_queue">{{ t.moderation }}</option>
           <option value="cleanup_queue">{{ t.cleanup }}</option>

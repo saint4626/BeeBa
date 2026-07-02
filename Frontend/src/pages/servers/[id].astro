@@ -1,0 +1,162 @@
+---
+import { Globe2, LockKeyhole, RadioTower, ShieldCheck } from "lucide";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import LucideIcon from "../../components/ui/LucideIcon.astro";
+import ServerConnectionFields from "../../components/servers/ServerConnectionFields.astro";
+import { getPublicAPIBaseURL } from "../../lib/api/client";
+import { getPublicServer } from "../../lib/api/servers";
+import { publicMediaURL } from "../../lib/api/media-url";
+import { localizedPath, ui } from "../../lib/i18n";
+import { serverLanguageLabel } from "../../lib/servers/languages";
+import {
+  buildServerAlternates,
+  buildServerCanonicalPaths,
+  extractServerIDFromPathParam,
+  serverMetaDescription,
+} from "../../lib/seo/server-url";
+import { breadcrumbJsonLd, serverJsonLd } from "../../lib/seo/structured-data";
+import type { PublicServerDetail } from "../../lib/api/types";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const locale = "en";
+const t = ui[locale];
+const site = Astro.site ?? new URL("http://localhost:4321");
+const publicAPIBaseURL = getPublicAPIBaseURL();
+const serverID = extractServerIDFromPathParam(id);
+
+let item: PublicServerDetail | null = null;
+let error = "";
+
+if (!serverID) {
+  return Astro.redirect(localizedPath(locale, "/servers"), 302);
+}
+
+try {
+  item = await getPublicServer(serverID);
+} catch (caught) {
+  if (caught instanceof Error && caught.message.toLowerCase().includes("not found")) {
+    return Astro.redirect(localizedPath(locale, "/404"), 302);
+  }
+  error = caught instanceof Error ? caught.message : t.servers.failedToLoad;
+}
+
+const pageTitle = item ? `${item.name} - BeeBa Servers` : `${t.servers.unavailableTitle} - BeeBa`;
+const description = item ? serverMetaDescription(item, locale) : t.servers.description;
+const canonicalPaths = item ? buildServerCanonicalPaths(item) : null;
+const canonicalPath = canonicalPaths?.en ?? localizedPath(locale, "/servers");
+if (item && Astro.url.pathname !== canonicalPath) {
+  return Astro.redirect(canonicalPath, 301);
+}
+const alternatePaths = canonicalPaths ? buildServerAlternates(canonicalPaths.en, canonicalPaths.ru) : [];
+const ownerName = item ? item.owner.display_name || item.owner.username : "";
+const ownerAvatarURL = publicMediaURL(publicAPIBaseURL, item?.owner.avatar_image_id);
+const ownerInitials = ownerName.slice(0, 2).toUpperCase();
+const playerLabel = item && typeof item.check.online_players === "number" && typeof item.check.max_players === "number"
+  ? `${item.check.online_players.toLocaleString()}/${item.check.max_players.toLocaleString()}`
+  : item?.check.status === "online" ? t.servers.online : t.servers.offline;
+const pingLabel = item && typeof item.check.round_trip_ms === "number" ? `${item.check.round_trip_ms} ms` : t.servers.unknown;
+const languageLabel = item ? serverLanguageLabel(item.language, locale, t.servers.anyLanguage) : t.servers.anyLanguage;
+const hasCommunityInfo = Boolean(item && (item.rules || item.discord_url || item.website_url || item.tags.length > 0));
+const jsonLd = item ? [
+  breadcrumbJsonLd(site, [
+    { name: t.nav.home, path: "/" },
+    { name: t.nav.servers, path: "/servers" },
+    { name: item.name, path: canonicalPath },
+  ]),
+  serverJsonLd(site, item, locale, canonicalPath),
+] : [];
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  canonicalPath={canonicalPath}
+  alternatePaths={alternatePaths}
+  jsonLd={jsonLd}
+>
+  <div class="server-detail-shell">
+    {error ? (
+      <div class="catalog-empty" role="status">
+        <div class="catalog-empty__title">
+          <span aria-hidden="true"></span>
+          <strong>{t.servers.unavailableTitle}</strong>
+          <span aria-hidden="true"></span>
+        </div>
+        <p>{error}</p>
+      </div>
+    ) : item && (
+      <>
+        <header class="server-detail-hero">
+          <div class="server-detail-hero__main">
+            <p class="eyebrow">{t.servers.detailEyebrow}</p>
+            <h1>{item.name}</h1>
+            <p>{item.description || item.check.motd || t.servers.noDescription}</p>
+            <div class="server-detail-hero__owner">
+              <span class="server-card__avatar" aria-hidden="true">
+                {ownerAvatarURL ? <img src={ownerAvatarURL} alt="" width="28" height="28" loading="lazy" decoding="async" /> : ownerInitials}
+              </span>
+              <a href={localizedPath(locale, `/users/${item.owner.username}`)}>{ownerName}</a>
+            </div>
+            <div class="server-detail-hero__stats" aria-label={t.servers.liveState}>
+              <span class="server-detail-stat" data-status={item.check.status}>
+                <LucideIcon node={RadioTower} size={14} />
+                <span>{t.nav.status}</span>
+                <strong>{item.check.status === "online" ? t.servers.online : t.servers.offline}</strong>
+              </span>
+              <span class="server-detail-stat">
+                <span>{t.servers.players}</span>
+                <strong>{playerLabel}</strong>
+              </span>
+              <span class="server-detail-stat">
+                <span>{t.servers.ping}</span>
+                <strong>{pingLabel}</strong>
+              </span>
+              <ServerConnectionFields item={item} locale={locale} class="server-connection-fields--detail-badges" />
+            </div>
+          </div>
+        </header>
+
+        <section class:list={["server-detail-dashboard", { "server-detail-dashboard--with-community": hasCommunityInfo }]}>
+          {hasCommunityInfo && (
+            <div class="server-detail-panel server-detail-panel--community">
+              <h2>{t.servers.communityInfo}</h2>
+              {item.rules && <p>{item.rules}</p>}
+              <div class="server-detail-links">
+                {item.website_url && <a class="button button--secondary" href={item.website_url} target="_blank" rel="noreferrer">{t.servers.website}</a>}
+                {item.discord_url && <a class="button button--secondary" href={item.discord_url} target="_blank" rel="noreferrer">Discord</a>}
+              </div>
+              {item.tags.length > 0 && (
+                <div class="server-card__tags">
+                  {item.tags.map((tag) => <a href={localizedPath(locale, `/servers?tags=${encodeURIComponent(tag.slug)}`)}>{tag.name}</a>)}
+                </div>
+              )}
+            </div>
+          )}
+          <div class="server-detail-panel server-detail-panel--details">
+            <h2>{t.servers.details}</h2>
+            <dl class="server-detail-list">
+              <div>
+                <dt><LucideIcon node={Globe2} size={14} /> {t.servers.region}</dt>
+                <dd>{item.region || t.servers.anyRegion}</dd>
+              </div>
+              <div>
+                <dt>{t.servers.language}</dt>
+                <dd>{languageLabel}</dd>
+              </div>
+              <div>
+                <dt><LucideIcon node={LockKeyhole} size={14} /> {t.servers.password}</dt>
+                <dd>{item.has_password ? t.servers.passwordProtected : t.servers.noPassword}</dd>
+              </div>
+              <div>
+                <dt><LucideIcon node={ShieldCheck} size={14} /> {t.servers.lastChecked}</dt>
+                <dd>{item.check.last_checked_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.check.last_checked_at)) : t.servers.unknown}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </>
+    )}
+  </div>
+</BaseLayout>
