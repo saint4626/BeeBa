@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"beeba.org/internal/domain/servers"
 	"beeba.org/internal/security/secretbox"
@@ -430,6 +431,66 @@ WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL`, serverID, o
 	return item, nil
 }
 
+func (r ServerRepository) EnqueueDueChecks(ctx context.Context, pendingInterval time.Duration, onlineInterval time.Duration, offlineInterval time.Duration, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("begin enqueue due server checks: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var locked bool
+	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(4296, 701)`).Scan(&locked); err != nil {
+		return 0, fmt.Errorf("acquire server check scheduler lock: %w", err)
+	}
+	if !locked {
+		return 0, nil
+	}
+
+	tag, err := tx.Exec(ctx, `
+WITH candidates AS (
+  SELECT sl.id
+  FROM server_listings sl
+  WHERE sl.deleted_at IS NULL
+    AND sl.status IN ('pending_verification', 'published', 'offline', 'failed')
+    AND (
+      sl.last_checked_at IS NULL
+      OR sl.last_checked_at <= now() - CASE
+        WHEN sl.check_status = 'online' THEN $2::bigint * interval '1 millisecond'
+        WHEN sl.check_status IN ('offline', 'failed') THEN $3::bigint * interval '1 millisecond'
+        ELSE $1::bigint * interval '1 millisecond'
+      END
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM worker_jobs job
+      WHERE job.queue_name = 'server_check_queue'
+        AND job.status IN ('pending', 'running')
+        AND job.payload->>'server_id' = sl.id::text
+    )
+  ORDER BY sl.last_checked_at ASC NULLS FIRST, sl.created_at ASC, sl.id ASC
+  LIMIT $4
+)
+INSERT INTO worker_jobs (queue_name, job_type, payload, max_attempts)
+SELECT 'server_check_queue', 'check_basis_server', jsonb_build_object('server_id', id::text), 3
+FROM candidates`,
+		durationMilliseconds(pendingInterval),
+		durationMilliseconds(onlineInterval),
+		durationMilliseconds(offlineInterval),
+		limit,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert due server check jobs: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit due server checks: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 type ServerCheckTarget struct {
 	ServerID string
 	Host     string
@@ -817,10 +878,28 @@ func enqueueServerCheckTx(ctx context.Context, tx pgx.Tx, serverID string) error
 	}
 	if _, err := tx.Exec(ctx, `
 INSERT INTO worker_jobs (queue_name, job_type, payload, max_attempts)
-VALUES ('server_check_queue', 'check_basis_server', $1::jsonb, 3)`, string(payload)); err != nil {
+SELECT 'server_check_queue', 'check_basis_server', $1::jsonb, 3
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM worker_jobs job
+  WHERE job.queue_name = 'server_check_queue'
+    AND job.status IN ('pending', 'running')
+    AND job.payload->>'server_id' = $2
+)`, string(payload), serverID); err != nil {
 		return fmt.Errorf("insert server check job: %w", err)
 	}
 	return nil
+}
+
+func durationMilliseconds(value time.Duration) int64 {
+	if value <= 0 {
+		return 0
+	}
+	milliseconds := int64(value / time.Millisecond)
+	if milliseconds < 1 {
+		return 1
+	}
+	return milliseconds
 }
 
 func serverSort(sort string) (expr string, cursorCondition string, err error) {

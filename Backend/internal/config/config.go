@@ -11,34 +11,39 @@ import (
 )
 
 const (
-	defaultHTTPAddr         = ":8080"
-	defaultEnvironment      = "development"
-	defaultServiceName      = "beeba-api"
-	defaultPublicBaseURL    = "http://localhost:4321"
-	defaultCORSOrigins      = "http://localhost:4321,http://127.0.0.1:4321"
-	defaultMaxUploadBytes   = 2 * 1024 * 1024 * 1024
-	defaultMaxImageBytes    = 8 * 1024 * 1024
-	defaultUserStorageQuota = 10 * 1024 * 1024 * 1024
-	defaultReadinessTimeout = 2 * time.Second
-	defaultShutdownTimeout  = 10 * time.Second
-	defaultUploadTimeout    = 20 * time.Minute
-	defaultReadTimeout      = defaultUploadTimeout
-	defaultWriteTimeout     = defaultUploadTimeout
-	defaultIdleTimeout      = 2 * time.Minute
-	defaultRequestBodyLimit = int(defaultMaxUploadBytes + 1024*1024)
-	defaultQuarantineBucket = "beeba-content-quarantine"
-	defaultPrivateBucket    = "beeba-content-private"
-	defaultPublicBucket     = "beeba-content-public"
-	defaultPreviewBucket    = "beeba-content-previews"
-	defaultBackupBucket     = "beeba-content-backups"
-	developmentSecretBoxKey = "zcSZAHVJniJYGFVutzyqiz8hAWYhoxB83+gy9lJpabM="
-	defaultContentIndex     = "beeba_content"
-	defaultClamAVTimeout    = 20 * time.Minute
-	defaultProxyHeader      = "X-Forwarded-For"
-	defaultEmailFrom        = "BeeBa <hello@beeba.org>"
-	defaultEmailDailyLimit  = 90
-	defaultResendAPIBaseURL = "https://api.resend.com"
-	defaultTurnstileURL     = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+	defaultHTTPAddr                     = ":8080"
+	defaultEnvironment                  = "development"
+	defaultServiceName                  = "beeba-api"
+	defaultPublicBaseURL                = "http://localhost:4321"
+	defaultCORSOrigins                  = "http://localhost:4321,http://127.0.0.1:4321"
+	defaultMaxUploadBytes               = 2 * 1024 * 1024 * 1024
+	defaultMaxImageBytes                = 8 * 1024 * 1024
+	defaultUserStorageQuota             = 10 * 1024 * 1024 * 1024
+	defaultReadinessTimeout             = 2 * time.Second
+	defaultShutdownTimeout              = 10 * time.Second
+	defaultUploadTimeout                = 20 * time.Minute
+	defaultReadTimeout                  = defaultUploadTimeout
+	defaultWriteTimeout                 = defaultUploadTimeout
+	defaultIdleTimeout                  = 2 * time.Minute
+	defaultRequestBodyLimit             = int(defaultMaxUploadBytes + 1024*1024)
+	defaultQuarantineBucket             = "beeba-content-quarantine"
+	defaultPrivateBucket                = "beeba-content-private"
+	defaultPublicBucket                 = "beeba-content-public"
+	defaultPreviewBucket                = "beeba-content-previews"
+	defaultBackupBucket                 = "beeba-content-backups"
+	developmentSecretBoxKey             = "zcSZAHVJniJYGFVutzyqiz8hAWYhoxB83+gy9lJpabM="
+	defaultContentIndex                 = "beeba_content"
+	defaultClamAVTimeout                = 20 * time.Minute
+	defaultProxyHeader                  = "X-Forwarded-For"
+	defaultEmailFrom                    = "BeeBa <hello@beeba.org>"
+	defaultEmailDailyLimit              = 90
+	defaultResendAPIBaseURL             = "https://api.resend.com"
+	defaultTurnstileURL                 = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+	defaultServerCheckSchedulerInterval = time.Minute
+	defaultServerCheckPendingInterval   = time.Minute
+	defaultServerCheckOnlineInterval    = 5 * time.Minute
+	defaultServerCheckOfflineInterval   = 2 * time.Minute
+	defaultServerCheckBatchSize         = 12
 )
 
 type RateLimitRule struct {
@@ -65,6 +70,14 @@ type RateLimitConfig struct {
 	ServerWrite        RateLimitRule
 	ServerVerify       RateLimitRule
 	AdminAction        RateLimitRule
+}
+
+type ServerCheckConfig struct {
+	SchedulerInterval time.Duration
+	PendingInterval   time.Duration
+	OnlineInterval    time.Duration
+	OfflineInterval   time.Duration
+	BatchSize         int
 }
 
 var defaultRateLimits = RateLimitConfig{
@@ -136,6 +149,7 @@ type Config struct {
 	TurnstileRequired       bool
 	TurnstileSecretKey      string
 	TurnstileVerifyURL      string
+	ServerChecks            ServerCheckConfig
 	RateLimits              RateLimitConfig
 }
 
@@ -188,6 +202,7 @@ func Load() (Config, error) {
 		TurnstileRequired:       envBool("BEEBA_TURNSTILE_REQUIRED", false),
 		TurnstileSecretKey:      envString("BEEBA_TURNSTILE_SECRET_KEY", ""),
 		TurnstileVerifyURL:      envString("BEEBA_TURNSTILE_VERIFY_URL", defaultTurnstileURL),
+		ServerChecks:            loadServerChecks(),
 		RateLimits:              loadRateLimits(),
 	}
 
@@ -243,6 +258,9 @@ func (c Config) validate() error {
 		return fmt.Errorf("BEEBA_EMAIL_DAILY_LIMIT must be greater than 0")
 	}
 	if err := c.RateLimits.validate(); err != nil {
+		return err
+	}
+	if err := c.ServerChecks.validate(); err != nil {
 		return err
 	}
 	if c.IsProduction() && strings.TrimSpace(c.ClamAVAddr) == "" {
@@ -316,6 +334,34 @@ func validateEmailConfig(c Config) error {
 		if _, err := url.ParseRequestURI(c.TurnstileVerifyURL); err != nil {
 			return fmt.Errorf("BEEBA_TURNSTILE_VERIFY_URL is invalid: %w", err)
 		}
+	}
+	return nil
+}
+
+func loadServerChecks() ServerCheckConfig {
+	return ServerCheckConfig{
+		SchedulerInterval: envDuration("BEEBA_SERVER_CHECK_SCHEDULER_INTERVAL", defaultServerCheckSchedulerInterval),
+		PendingInterval:   envDuration("BEEBA_SERVER_CHECK_PENDING_INTERVAL", defaultServerCheckPendingInterval),
+		OnlineInterval:    envDuration("BEEBA_SERVER_CHECK_ONLINE_INTERVAL", defaultServerCheckOnlineInterval),
+		OfflineInterval:   envDuration("BEEBA_SERVER_CHECK_OFFLINE_INTERVAL", defaultServerCheckOfflineInterval),
+		BatchSize:         envInt("BEEBA_SERVER_CHECK_BATCH_SIZE", defaultServerCheckBatchSize),
+	}
+}
+
+func (s ServerCheckConfig) validate() error {
+	checks := map[string]time.Duration{
+		"BEEBA_SERVER_CHECK_SCHEDULER_INTERVAL": s.SchedulerInterval,
+		"BEEBA_SERVER_CHECK_PENDING_INTERVAL":   s.PendingInterval,
+		"BEEBA_SERVER_CHECK_ONLINE_INTERVAL":    s.OnlineInterval,
+		"BEEBA_SERVER_CHECK_OFFLINE_INTERVAL":   s.OfflineInterval,
+	}
+	for name, value := range checks {
+		if value <= 0 {
+			return fmt.Errorf("%s must be greater than 0", name)
+		}
+	}
+	if s.BatchSize <= 0 {
+		return fmt.Errorf("BEEBA_SERVER_CHECK_BATCH_SIZE must be greater than 0")
 	}
 	return nil
 }

@@ -245,6 +245,16 @@ Minimum production variables:
 | `PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile frontend site key |
 | `KENER_SECRET_KEY` | Status page secret |
 
+Server availability check tuning:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BEEBA_SERVER_CHECK_SCHEDULER_INTERVAL` | `1m` | How often the worker schedules due server checks |
+| `BEEBA_SERVER_CHECK_PENDING_INTERVAL` | `1m` | Recheck interval for pending or not-yet-verified servers |
+| `BEEBA_SERVER_CHECK_ONLINE_INTERVAL` | `5m` | Recheck interval for online servers |
+| `BEEBA_SERVER_CHECK_OFFLINE_INTERVAL` | `2m` | Recheck interval for offline or failed servers |
+| `BEEBA_SERVER_CHECK_BATCH_SIZE` | `12` | Maximum checks queued per scheduler pass |
+
 Generate a new secret-box key:
 
 ```powershell

@@ -92,6 +92,74 @@ func TestLoadUserStorageQuotaOverride(t *testing.T) {
 	}
 }
 
+func TestLoadServerCheckDefaults(t *testing.T) {
+	t.Setenv("BEEBA_ENV", "development")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.ServerChecks.SchedulerInterval != time.Minute {
+		t.Fatalf("ServerChecks.SchedulerInterval = %s, want 1m", cfg.ServerChecks.SchedulerInterval)
+	}
+	if cfg.ServerChecks.PendingInterval != time.Minute {
+		t.Fatalf("ServerChecks.PendingInterval = %s, want 1m", cfg.ServerChecks.PendingInterval)
+	}
+	if cfg.ServerChecks.OnlineInterval != 5*time.Minute {
+		t.Fatalf("ServerChecks.OnlineInterval = %s, want 5m", cfg.ServerChecks.OnlineInterval)
+	}
+	if cfg.ServerChecks.OfflineInterval != 2*time.Minute {
+		t.Fatalf("ServerChecks.OfflineInterval = %s, want 2m", cfg.ServerChecks.OfflineInterval)
+	}
+	if cfg.ServerChecks.BatchSize != 12 {
+		t.Fatalf("ServerChecks.BatchSize = %d, want 12", cfg.ServerChecks.BatchSize)
+	}
+}
+
+func TestLoadServerCheckOverrides(t *testing.T) {
+	t.Setenv("BEEBA_ENV", "development")
+	t.Setenv("BEEBA_SERVER_CHECK_SCHEDULER_INTERVAL", "30s")
+	t.Setenv("BEEBA_SERVER_CHECK_PENDING_INTERVAL", "45s")
+	t.Setenv("BEEBA_SERVER_CHECK_ONLINE_INTERVAL", "10m")
+	t.Setenv("BEEBA_SERVER_CHECK_OFFLINE_INTERVAL", "3m")
+	t.Setenv("BEEBA_SERVER_CHECK_BATCH_SIZE", "7")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.ServerChecks.SchedulerInterval != 30*time.Second {
+		t.Fatalf("ServerChecks.SchedulerInterval = %s, want 30s", cfg.ServerChecks.SchedulerInterval)
+	}
+	if cfg.ServerChecks.PendingInterval != 45*time.Second {
+		t.Fatalf("ServerChecks.PendingInterval = %s, want 45s", cfg.ServerChecks.PendingInterval)
+	}
+	if cfg.ServerChecks.OnlineInterval != 10*time.Minute {
+		t.Fatalf("ServerChecks.OnlineInterval = %s, want 10m", cfg.ServerChecks.OnlineInterval)
+	}
+	if cfg.ServerChecks.OfflineInterval != 3*time.Minute {
+		t.Fatalf("ServerChecks.OfflineInterval = %s, want 3m", cfg.ServerChecks.OfflineInterval)
+	}
+	if cfg.ServerChecks.BatchSize != 7 {
+		t.Fatalf("ServerChecks.BatchSize = %d, want 7", cfg.ServerChecks.BatchSize)
+	}
+}
+
+func TestLoadRejectsInvalidServerCheckSchedule(t *testing.T) {
+	t.Setenv("BEEBA_ENV", "development")
+	t.Setenv("BEEBA_SERVER_CHECK_ONLINE_INTERVAL", "0")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want validation error")
+	}
+	if !strings.Contains(err.Error(), "BEEBA_SERVER_CHECK_ONLINE_INTERVAL") {
+		t.Fatalf("Load() error = %q, want server check interval validation", err.Error())
+	}
+}
+
 func TestHTTPTimeoutDefaultsAllowLargeMultipartUploads(t *testing.T) {
 	t.Setenv("BEEBA_ENV", "development")
 

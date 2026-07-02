@@ -18,16 +18,16 @@ import (
 	"beeba.org/internal/config"
 	contentdomain "beeba.org/internal/domain/content"
 	"beeba.org/internal/domain/jobs"
-	serversdomain "beeba.org/internal/domain/servers"
 	mediadomain "beeba.org/internal/domain/media"
+	serversdomain "beeba.org/internal/domain/servers"
 	emailclient "beeba.org/internal/email"
 	"beeba.org/internal/repository/postgres"
 	searchclient "beeba.org/internal/search/meilisearch"
-	"beeba.org/internal/servercheck"
 	"beeba.org/internal/security/antivirus"
 	"beeba.org/internal/security/basisbee"
 	"beeba.org/internal/security/images"
 	"beeba.org/internal/security/secretbox"
+	"beeba.org/internal/servercheck"
 	miniostorage "beeba.org/internal/storage/minio"
 
 	"github.com/google/uuid"
@@ -157,6 +157,10 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	serverCheckTicker := time.NewTicker(w.cfg.ServerChecks.SchedulerInterval)
+	defer serverCheckTicker.Stop()
+
+	w.scheduleDueServerChecks(ctx)
 
 	for {
 		if err := w.processOnce(ctx); err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -167,6 +171,8 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			w.log.Info("worker_stopping")
 			return ctx.Err()
+		case <-serverCheckTicker.C:
+			w.scheduleDueServerChecks(ctx)
 		case <-ticker.C:
 		}
 	}
@@ -351,6 +357,26 @@ func (w *Worker) processServerCheckQueue(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (w *Worker) scheduleDueServerChecks(ctx context.Context) {
+	scheduleCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	queued, err := w.servers.EnqueueDueChecks(
+		scheduleCtx,
+		w.cfg.ServerChecks.PendingInterval,
+		w.cfg.ServerChecks.OnlineInterval,
+		w.cfg.ServerChecks.OfflineInterval,
+		w.cfg.ServerChecks.BatchSize,
+	)
+	if err != nil {
+		w.log.Error("worker_server_check_schedule_failed", slog.String("error", err.Error()))
+		return
+	}
+	if queued > 0 {
+		w.log.Info("worker_server_checks_scheduled", slog.Int64("queued", queued))
+	}
 }
 
 func (w *Worker) processServerCheck(ctx context.Context, job jobs.Job) error {
