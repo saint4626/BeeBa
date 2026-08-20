@@ -110,6 +110,7 @@ services:
       KENER_SECRET_KEY: ${KENER_SECRET_KEY:?KENER_SECRET_KEY is required}
       ORIGIN: ${KENER_ORIGIN:-https://status.beeba.org}
       REDIS_URL: redis://kener_redis:6379
+      KENER_SOCIAL_HEALTH_URL: ${KENER_SOCIAL_HEALTH_URL:-https://social.beeba.org/readyz}
     volumes:
       - kener_data:/app/database
       - kener_uploads:/app/uploads

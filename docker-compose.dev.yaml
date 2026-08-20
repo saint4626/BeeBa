@@ -18,6 +18,7 @@ services:
       KENER_SECRET_KEY: ${KENER_SECRET_KEY:-beeba_dev_kener_secret_change_me}
       ORIGIN: ${KENER_ORIGIN:-http://127.0.0.1:8089}
       REDIS_URL: redis://kener_redis:6379
+      KENER_SOCIAL_HEALTH_URL: ${KENER_SOCIAL_HEALTH_URL:-https://social.beeba.org/readyz}
     volumes:
       - kener_data:/app/database
       - kener_uploads:/app/uploads

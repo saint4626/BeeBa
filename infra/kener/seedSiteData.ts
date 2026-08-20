@@ -13,11 +13,11 @@ const seedSiteData = {
   metaTags: [
     {
       key: "description",
-      value: "Public status page for BeeBa services, API, search, and object storage.",
+      value: "Public status page for BeeBa and connected BasisVR services.",
     },
     {
       key: "og:description",
-      value: "Public status page for BeeBa services, API, search, and object storage.",
+      value: "Public status page for BeeBa and connected BasisVR services.",
     },
     { key: "og:image", value: `${origin}/beeba-logo.webp` },
     {
@@ -46,7 +46,7 @@ const seedSiteData = {
     },
     {
       key: "twitter:description",
-      value: "Public status page for BeeBa services, API, search, and object storage.",
+      value: "Public status page for BeeBa and connected BasisVR services.",
     },
   ],
   nav: [
@@ -55,7 +55,7 @@ const seedSiteData = {
   ],
   hero: {
     title: ".BEEBA service status",
-    subtitle: "Live availability for the catalog, API, search, and object storage.",
+    subtitle: "Live availability for BeeBa and connected BasisVR services.",
   },
   footerHTML: `<div class="beeba-status-footer">
     <p>
@@ -271,7 +271,10 @@ a {
 }
 `,
   socialPreviewImage: "/beeba-logo.webp",
-  categories: [{ name: "BeeBa", description: "Core BeeBa production services", isHidden: false }],
+  categories: [
+    { name: "BeeBa", description: "Core BeeBa production services", isHidden: false },
+    { name: "BasisVR", description: "Connected BasisVR production services", isHidden: false },
+  ],
   homeIncidentCount: 5,
   homeIncidentStartTimeWithin: 30,
   homeDataMaxDays: {

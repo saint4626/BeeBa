@@ -23,6 +23,28 @@ const readyzEval = `(async function (statusCode, responseTime, responseRaw) {
   return { status: "DEGRADED", latency: responseTime };
 })`;
 
+const socialReadyzEval = `(async function (statusCode, responseTime, responseRaw) {
+  if (statusCode < 200 || statusCode >= 300) {
+    return { status: "DOWN", latency: responseTime };
+  }
+
+  try {
+    const payload = JSON.parse(responseRaw);
+    const checks = payload.checks || {};
+    if (
+      payload.status === "ok" &&
+      checks.postgres?.status === "ok" &&
+      checks.redis?.status === "ok"
+    ) {
+      return { status: "UP", latency: responseTime };
+    }
+  } catch (error) {
+    return { status: "DOWN", latency: responseTime };
+  }
+
+  return { status: "DEGRADED", latency: responseTime };
+})`;
+
 const jsonAvailableEval = `(async function (statusCode, responseTime, responseRaw) {
   if (statusCode < 200 || statusCode >= 300) {
     return { status: "DOWN", latency: responseTime };
@@ -58,6 +80,7 @@ const defaultMonitorSettings = {
 
 const monitorIcon = "/beeba-logo.webp";
 const storageHealthURL = process.env.KENER_STORAGE_HEALTH_URL ?? "http://minio:9000/minio/health/ready";
+const socialHealthURL = process.env.KENER_SOCIAL_HEALTH_URL ?? "https://social.beeba.org/readyz";
 
 const seedMonitorData = [
   {
@@ -149,6 +172,25 @@ const seedMonitorData = [
     down_trigger: null,
     degraded_trigger: null,
     type_data: apiTypeData(storageHealthURL),
+    day_degraded_minimum_count: 1,
+    day_down_minimum_count: 1,
+    include_degraded_in_downtime: "NO",
+    is_hidden: "NO",
+    monitor_settings_json: JSON.stringify(defaultMonitorSettings),
+  },
+  {
+    tag: "basisvr-social-api",
+    name: "BasisVR Social API",
+    description: "Social graph, realtime, presence, worlds, and federation API.",
+    image: monitorIcon,
+    cron: "* * * * *",
+    default_status: "UP",
+    status: "ACTIVE",
+    category_name: "BasisVR",
+    monitor_type: "API",
+    down_trigger: null,
+    degraded_trigger: null,
+    type_data: apiTypeData(socialHealthURL, socialReadyzEval),
     day_degraded_minimum_count: 1,
     day_down_minimum_count: 1,
     include_degraded_in_downtime: "NO",

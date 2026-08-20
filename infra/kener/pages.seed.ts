@@ -7,6 +7,7 @@ const homeMonitorTags = [
   "beeba-openapi",
   "beeba-search",
   "beeba-storage",
+  "basisvr-social-api",
 ];
 
 export async function seed(knex: Knex): Promise<void> {

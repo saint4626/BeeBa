@@ -111,6 +111,7 @@ services:
       ORIGIN: ${KENER_ORIGIN:-https://status.beeba.org}
       REDIS_URL: redis://kener_redis:6379
       KENER_STORAGE_HEALTH_URL: ${KENER_STORAGE_HEALTH_URL:-https://s3.beeba.org/minio/health/ready}
+      KENER_SOCIAL_HEALTH_URL: ${KENER_SOCIAL_HEALTH_URL:-https://social.beeba.org/readyz}
     volumes:
       - kener_data:/app/database
       - kener_uploads:/app/uploads

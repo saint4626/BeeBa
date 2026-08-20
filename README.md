@@ -244,6 +244,7 @@ Minimum production variables:
 | `BEEBA_TURNSTILE_SECRET_KEY` | Cloudflare Turnstile backend secret |
 | `PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile frontend site key |
 | `KENER_SECRET_KEY` | Status page secret |
+| `KENER_SOCIAL_HEALTH_URL` | BasisVR Social API readiness endpoint |
 
 Server availability check tuning:
 
